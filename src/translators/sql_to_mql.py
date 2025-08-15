@@ -2,12 +2,13 @@
 SQL to MongoDB Query Language (MQL) translator
 """
 from typing import Dict, List, Any, Optional
-from ..mappers.function_mapper import FunctionMapper
+from ..functions.function_mapper import FunctionMapper
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from ..joins.join_translator import JoinTranslator
 from ..orderby import OrderByParser, OrderByTranslator
+from ..groupby import GroupByParser, GroupByTranslator
 
 class MongoSQLTranslator:
     """Translates parsed SQL to MongoDB Query Language"""
@@ -17,6 +18,8 @@ class MongoSQLTranslator:
         self.join_translator = JoinTranslator()
         self.orderby_parser = OrderByParser()
         self.orderby_translator = OrderByTranslator()
+        self.groupby_parser = GroupByParser()
+        self.groupby_translator = GroupByTranslator()
     
     def _is_aggregate_function(self, function_name: str) -> bool:
         """Check if a function is an aggregate function using the function mapper"""
@@ -544,18 +547,28 @@ class MongoSQLTranslator:
     def _handle_aggregate_functions(self, parsed_sql: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Handle aggregate functions like COUNT, MAX, MIN, SUM, AVG"""
         columns = parsed_sql.get('columns', [])
+        group_by = parsed_sql.get('group_by', [])
         
         # Find aggregate functions
         aggregate_functions = []
+        regular_columns = []
+        
         for col in columns:
             if isinstance(col, dict) and 'function' in col:
                 aggregate_functions.append(col)
+            else:
+                regular_columns.append(col)
         
         if not aggregate_functions:
             return None
         
-        # Handle single aggregate function
-        if len(aggregate_functions) == 1:
+        # If we have GROUP BY, use the GROUP BY module
+        if group_by:
+            group_by_structure = self.groupby_parser.parse_group_by_structure(parsed_sql)
+            return self.groupby_translator.translate(group_by_structure, parsed_sql)
+        
+        # Handle single aggregate function without GROUP BY
+        if len(aggregate_functions) == 1 and not regular_columns:
             func_info = aggregate_functions[0]
             func_name = func_info.get('function')
             # Check both 'arg' and 'args_str' for backward compatibility
@@ -565,6 +578,12 @@ class MongoSQLTranslator:
                 return self._translate_count_aggregate(parsed_sql, func_arg)
             elif func_name in ['MAX', 'MIN', 'SUM', 'AVG']:
                 return self._translate_math_aggregate(parsed_sql, func_name, func_arg)
+        
+        # If we have aggregate functions with regular columns but no GROUP BY,
+        # this might be an invalid query, but let's try GROUP BY aggregation anyway
+        if aggregate_functions and regular_columns:
+            group_by_structure = self.groupby_parser.parse_group_by_structure(parsed_sql)
+            return self.groupby_translator.translate(group_by_structure, parsed_sql)
         
         # Handle multiple aggregate functions (would need aggregation pipeline)
         # For now, return None to indicate not supported

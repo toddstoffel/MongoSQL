@@ -103,6 +103,7 @@ This ensures ORDER BY and comparison operations return identical results between
 | **DISTINCT Operations** | 3/3 | 100% | ✅ Complete |
 | **GROUP BY Operations** | 0/3 | 0% | 🔄 Needed |
 | **Conditional Functions** | 0/4 | 0% | 🔄 Needed |
+| **CLI/Interface Features** | 2/8 | 25% | 🔄 Partial |
 | **Subquery Operations** | 0/3 | 0% | 🔄 Future |
 
 ## Next Priority: Missing Function Categories
@@ -128,9 +129,26 @@ SELECT country, SUM(creditLimit) FROM customers GROUP BY country HAVING SUM(cred
 - `IF(condition, true_value, false_value)` → `$cond`
 - `CASE WHEN ... THEN ... ELSE ... END` → `$switch` or `$cond`
 - `COALESCE(value1, value2, ...)` → `$ifNull`
+
+### 3. CLI/Interface Features (MEDIUM PRIORITY) 🟨
+**Status**: Partial implementation - User experience improvements needed
+**Missing CLI functionality**:
+- **Interactive Help System** - Currently shows basic help, needs comprehensive command reference
+  - `help contents` - Show all available help topics  
+  - `help [topic]` - Show detailed help for specific topics (e.g., `help functions`, `help syntax`)
+  - `help data types` - Data type conversion reference
+  - `help operators` - SQL operator support reference
+- **Command History** - Command line history navigation (up/down arrows)
+- **Tab Completion** - Auto-complete for table names, column names, SQL keywords
+- **Multi-line Query Support** - Handle queries spanning multiple lines with proper continuation
+- **Query Timing** - Show execution time for performance analysis
+- **Result Export** - Export query results to CSV, JSON formats
+- **Connection Status Display** - Show current database, connection info in prompt
+
+**Implementation Priority**: Medium - Improves developer experience but doesn't affect core translation functionality
 - `NULLIF(expr1, expr2)` → Custom logic
 
-### 3. Subquery Operations (LOWER PRIORITY) 🔴
+### 4. Subquery Operations (FUTURE PRIORITY) 🔴
 **Status**: 0/3 tests passing - Complex implementation required
 **Missing functionality**:
 - Subqueries in WHERE clauses

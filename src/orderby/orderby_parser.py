@@ -1,7 +1,6 @@
 """
 ORDER BY SQL parsing module
 """
-import re
 import sqlparse
 from typing import List, Optional
 from .orderby_types import OrderByClause, OrderField, SortDirection
@@ -10,14 +9,11 @@ class OrderByParser:
     """Parser for ORDER BY clauses in SQL"""
     
     def __init__(self):
-        self.order_by_pattern = re.compile(
-            r'\bORDER\s+BY\s+(.+?)(?:\s+(?:LIMIT|GROUP\s+BY|HAVING|;)|$)',
-            re.IGNORECASE | re.DOTALL
-        )
+        pass  # No regex patterns needed anymore
     
     def parse_order_by(self, sql: str) -> Optional[OrderByClause]:
         """
-        Parse ORDER BY clause from SQL string
+        Parse ORDER BY clause from SQL string using token-based parsing
         
         Args:
             sql: SQL query string
@@ -25,13 +21,7 @@ class OrderByParser:
         Returns:
             OrderByClause if found, None otherwise
         """
-        # Try regex approach first for simpler cases
-        match = self.order_by_pattern.search(sql)
-        if match:
-            order_clause = match.group(1).strip()
-            return self._parse_order_fields(order_clause)
-        
-        # Fallback to token-based parsing for complex cases
+        # Use token-based parsing for all cases
         return self._parse_with_tokens(sql)
     
     def _parse_order_fields(self, order_clause: str) -> OrderByClause:
@@ -127,7 +117,7 @@ class OrderByParser:
     
     def _parse_with_tokens(self, sql: str) -> Optional[OrderByClause]:
         """
-        Parse ORDER BY using sqlparse tokens as fallback
+        Parse ORDER BY using sqlparse tokens
         
         Args:
             sql: SQL query string
@@ -145,21 +135,24 @@ class OrderByParser:
             current_field = ""
             
             for i, token in enumerate(tokens):
-                token_upper = str(token).upper()
+                token_str = str(token).strip()
+                token_upper = token_str.upper()
                 
-                if token_upper == "ORDER":
-                    # Check if next token is BY
-                    if i + 1 < len(tokens) and str(tokens[i + 1]).upper() == "BY":
-                        order_by_found = True
-                        continue
+                # Look for "ORDER BY" as a single token
+                if token_upper == "ORDER BY":
+                    order_by_found = True
+                    continue
                 elif order_by_found:
                     # Stop at next major clause
-                    if token_upper in ["LIMIT", "GROUP", "HAVING", ";"]:
+                    if token_upper in ["LIMIT", "GROUP BY", "HAVING", ";"]:
                         break
                     
+                    # Skip whitespace tokens
+                    if not token_str or token.ttype is sqlparse.tokens.Text.Whitespace:
+                        continue
+                    
                     # Collect ORDER BY content
-                    if str(token).strip():
-                        current_field += str(token)
+                    current_field += token_str
             
             if current_field:
                 return self._parse_order_fields(current_field)

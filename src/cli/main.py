@@ -265,7 +265,8 @@ def run_interactive_mode(parser, translator, db_client):
                 elif sql.lower() in ['help', 'help;', 'help\\g', 'help\\G']:
                     show_help()
                     continue
-                elif sql.lower() in ['show tables', 'show tables;', 'show tables\\g', 'show tables\\G']:
+                elif sql.lower() in ['show tables', 'show tables;', 'show tables\\g', 'show tables\\G', 
+                                     'show collections', 'show collections;', 'show collections\\g', 'show collections\\G']:
                     show_collections(db_client)
                     continue
                 elif sql.lower() in ['show databases', 'show databases;', 'show databases\\g', 'show databases\\G']:
@@ -308,6 +309,7 @@ def show_help():
     print("quit    (\\q)    Quit mongosql.")
     print("use     \\u      Use another database. Takes database name as argument.")
     print("SHOW TABLES     Show all tables (collections) in current database.")
+    print("SHOW COLLECTIONS Alias for SHOW TABLES.")
     print()
     print("For server side help, type 'help contents'")
     print()

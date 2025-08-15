@@ -292,7 +292,7 @@ class JoinTranslator:
         # Add WHERE conditions
         if parsed_sql.get('where'):
             # Use standalone WHERE translator to avoid circular imports
-            from ..translators.where_translator import WhereTranslator
+            from ..where import WhereTranslator
             where_translator = WhereTranslator()
             match_filter = where_translator.translate_where(parsed_sql['where'])
             if match_filter:  # Only add if translation successful

@@ -4,7 +4,7 @@ SQL Parser for parsing MariaDB/MySQL syntax using proper token-based parsing
 import sqlparse
 from sqlparse.sql import Statement, IdentifierList, Identifier, Function, Where, Comparison
 from typing import List, Dict, Any, Optional
-from .where_parser import WhereParser
+from ..where import WhereParser
 from sqlparse.tokens import Keyword, Name, Number, String, Operator, Punctuation, Literal
 from typing import Dict, List, Any, Optional, Union
 import sys
@@ -87,8 +87,14 @@ class TokenBasedSQLParser:
                 i = self._parse_from_clause(tokens, i + 1, result)
             elif token.ttype is Keyword and token.value.upper() == 'WHERE':
                 i = self._parse_where_clause(tokens, i + 1, result)
-            elif token.ttype is Keyword and ('ORDER' in token.value.upper()):
-                print(f"DEBUG: Found ORDER token at {i}: {token.ttype} -> '{token.value}'")
+            elif token.ttype is Keyword and token.value.upper() == 'GROUP BY':
+                from ..groupby.groupby_parser import GroupByParser
+                groupby_parser = GroupByParser()
+                fields, i = groupby_parser.parse_group_by_from_tokens(tokens, i + 1)
+                result['group_by'] = fields
+            elif token.ttype is Keyword and token.value.upper() == 'HAVING':
+                i = self._parse_having_clause(tokens, i + 1, result)
+            elif token.ttype is Keyword and token.value.upper() == 'ORDER BY':
                 i = self._parse_order_clause(tokens, i, result)
             elif token.ttype is Keyword and token.value.upper() == 'LIMIT':
                 i = self._parse_limit_clause(tokens, i + 1, result)
@@ -273,7 +279,7 @@ class TokenBasedSQLParser:
             
             # Stop at keywords that end FROM clause
             if (token.ttype is Keyword and 
-                (token.value.upper() in ['WHERE', 'ORDER', 'GROUP', 'LIMIT', 'HAVING'] or
+                (token.value.upper() in ['WHERE', 'ORDER BY', 'GROUP BY', 'LIMIT', 'HAVING'] or
                  'JOIN' in token.value.upper())):
                 break
             
@@ -435,7 +441,6 @@ class TokenBasedSQLParser:
     
     def _parse_order_clause(self, tokens: List, start_idx: int, result: Dict) -> int:
         """Parse ORDER BY clause"""
-        print(f"DEBUG: _parse_order_clause called with token: '{tokens[start_idx].value}'")
         i = start_idx
         
         # Skip ORDER BY keyword (might be combined as "ORDER BY" or separate "ORDER" "BY")
@@ -500,6 +505,31 @@ class TokenBasedSQLParser:
                 direction = 'ASC'
             order_list.append({'field': field, 'direction': direction})
         return order_list
+    
+    def _parse_having_clause(self, tokens: List, start_idx: int, result: Dict) -> int:
+        """Parse HAVING clause"""
+        i = start_idx
+        having_tokens = []
+        
+        # Collect all tokens until we hit another keyword or end
+        while i < len(tokens):
+            token = tokens[i]
+            
+            # Stop at other SQL keywords
+            if (token.ttype is Keyword and 
+                token.value.upper() in ['ORDER BY', 'LIMIT', 'UNION', 'EXCEPT', 'INTERSECT']):
+                break
+            
+            having_tokens.append(token)
+            i += 1
+        
+        # Parse the HAVING condition
+        if having_tokens:
+            having_str = ''.join(t.value for t in having_tokens).strip()
+            # For now, store as string - can be enhanced later with WHERE parser
+            result['having'] = having_str
+        
+        return i
     
     # Placeholder methods for other statement types
     def _parse_insert(self, parsed: Statement) -> Dict[str, Any]:

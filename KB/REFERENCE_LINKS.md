@@ -19,6 +19,7 @@
 - **[MariaDB Server Repository](https://github.com/MariaDB/server)** - Official MariaDB server source code for function implementation reference
 
 ### MongoDB Official Documentation
+- **[MongoDB Manual](https://www.mongodb.com/docs/manual/)** - Complete MongoDB documentation and reference guide
 - **[MongoDB Aggregation Pipeline Operators](https://docs.mongodb.com/manual/reference/operator/aggregation/)** - Primary translation target reference
 - **[MongoDB Date Operators](https://docs.mongodb.com/manual/reference/operator/aggregation/#date-expression-operators)** - Date manipulation in MongoDB
 - **[MongoDB String Operators](https://docs.mongodb.com/manual/reference/operator/aggregation/#string-expression-operators)** - String processing operators

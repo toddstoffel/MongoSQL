@@ -302,7 +302,15 @@ class MariaDBFormatter:
             all_columns = set()
             for doc in results:
                 for key in doc.keys():
-                    if key != '_id':  # Exclude MongoDB's _id
+                    # Include _id for aggregation results (GROUP BY fields)
+                    # but exclude MongoDB's document _id for regular find() results
+                    if key == '_id':
+                        # Check if this looks like an aggregation result
+                        # (has other fields besides _id, suggesting it's GROUP BY output)
+                        other_fields = [k for k in doc.keys() if k != '_id']
+                        if other_fields:
+                            all_columns.add(key)
+                    else:
                         all_columns.add(key)
             columns = list(all_columns)
         
