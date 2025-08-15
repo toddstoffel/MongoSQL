@@ -189,6 +189,22 @@ SELECT DISTINCT country FROM customers;
 SELECT DISTINCT city, country FROM customers;
 ```
 
+### Subqueries (In Development)
+```sql
+-- Scalar subquery for single value comparison
+SELECT customerName FROM customers 
+WHERE customerNumber = (SELECT customerNumber FROM orders ORDER BY orderDate DESC LIMIT 1);
+
+-- IN subquery for membership testing
+SELECT customerName FROM customers 
+WHERE customerNumber IN (SELECT customerNumber FROM orders LIMIT 3);
+
+-- EXISTS subquery for correlated existence testing
+SELECT customerName FROM customers 
+WHERE EXISTS (SELECT 1 FROM orders WHERE orders.customerNumber = customers.customerNumber) 
+LIMIT 1;
+```
+
 ## SQL to MQL Translation Examples
 
 ### SELECT Statements
@@ -229,6 +245,26 @@ DELETE FROM customers WHERE customerNumber = 500;
 
 -- Translates to MongoDB
 db.customers.deleteMany({"customerNumber": {"$eq": 500}})
+```
+
+### Subquery Statements (Planned)
+
+```sql
+-- SQL Scalar Subquery
+SELECT customerName FROM customers 
+WHERE customerNumber = (SELECT customerNumber FROM orders ORDER BY orderDate DESC LIMIT 1);
+
+-- Translates to MongoDB Aggregation Pipeline
+db.customers.aggregate([
+  {$lookup: {
+    from: "orders", 
+    pipeline: [{$sort: {orderDate: -1}}, {$limit: 1}], 
+    as: "subquery"
+  }},
+  {$unwind: "$subquery"},
+  {$match: {$expr: {$eq: ["$customerNumber", "$subquery.customerNumber"]}}},
+  {$project: {customerName: 1}}
+])
 ```
 
 ## Supported SQL Functions
@@ -359,6 +395,11 @@ src/
 │   ├── conditional_translator.py # IF, CASE WHEN, COALESCE translation
 │   ├── conditional_types.py     # Conditional expression types
 │   └── conditional_function_mapper.py # Function mapping
+├── subqueries/
+│   ├── subquery_parser.py       # Subquery detection and parsing
+│   ├── subquery_translator.py   # Subquery to aggregation pipeline translation
+│   ├── subquery_types.py        # Subquery type definitions (scalar, IN, EXISTS)
+│   └── subquery_optimizer.py    # Subquery execution optimization
 ├── where/
 │   ├── where_parser.py      # WHERE clause parsing
 │   ├── where_translator.py  # WHERE to MongoDB match filters
@@ -409,6 +450,15 @@ SQL conditional functions translated to MongoDB operators:
 - **NULLIF**: `$cond` with `$eq` comparison for null conversion ✅
 - **Expression Evaluation**: Comprehensive MongoDB operator support
 - **Edge Case Handling**: Proper null value formatting and display
+
+#### Subqueries Module (`src/subqueries/`)
+Advanced subquery support for nested SELECT statements:
+- **Scalar Subqueries**: Single value comparisons in WHERE clauses
+- **IN Subqueries**: Value existence checking with subquery result sets  
+- **EXISTS Subqueries**: Correlated subqueries for row existence testing
+- **MongoDB Translation**: Complex aggregation pipeline generation with `$lookup`
+- **Performance Optimization**: Query optimization for nested operations
+- **Integration**: Seamless integration with WHERE, JOIN, and other modules
 
 #### Reserved Words Module (`src/reserved_words/`)
 MariaDB compatibility with proper identifier handling:
@@ -477,7 +527,12 @@ The translator provides helpful error messages for:
 - ✅ **Complete conditional functions** (IF, CASE WHEN, COALESCE, NULLIF)
 
 ### In Development
-- 🔄 **Complex subqueries** - Advanced query nesting support (3 remaining test cases)
+- 🔄 **Subqueries Module** - Implementing nested SELECT statement support:
+  - **Scalar Subqueries**: `WHERE column = (SELECT ...)` comparisons
+  - **IN Subqueries**: `WHERE column IN (SELECT ...)` membership testing  
+  - **EXISTS Subqueries**: `WHERE EXISTS (SELECT ...)` correlated queries
+  - **MongoDB Translation**: Converting to `$lookup` aggregation pipelines
+  - **Target**: Complete remaining 3 test cases to reach 100% compatibility
 - 🔄 **Additional MariaDB functions** - Expanding function library beyond current 47+
 
 ### MongoDB-Specific Considerations
