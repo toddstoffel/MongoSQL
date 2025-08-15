@@ -1262,6 +1262,41 @@ class MongoDBClient:
                 pass
             return None
         
+        elif '$eq' in expression:
+            # Equality comparison
+            values = expression['$eq']
+            if isinstance(values, list) and len(values) >= 2:
+                left, right = values[0], values[1]
+                
+                # Evaluate nested expressions
+                if isinstance(left, dict):
+                    left = self._evaluate_expression(left)
+                if isinstance(right, dict):
+                    right = self._evaluate_expression(right)
+                
+                return left == right
+            return False
+        
+        elif '$ifNull' in expression:
+            # COALESCE functionality - return first non-null value
+            values = expression['$ifNull']
+            if isinstance(values, list) and len(values) >= 2:
+                first_value = values[0]
+                second_value = values[1]
+                
+                # Evaluate first value
+                if isinstance(first_value, dict):
+                    first_value = self._evaluate_expression(first_value)
+                
+                # If first value is None/null, return second value
+                if first_value is None:
+                    if isinstance(second_value, dict):
+                        return self._evaluate_expression(second_value)
+                    return second_value
+                else:
+                    return first_value
+            return None
+        
         # Add more expression evaluations as needed
         
         # Default: return the expression as-is

@@ -7,6 +7,7 @@ from .aggregate_functions import AggregateFunctionMapper
 from .string_functions import StringFunctionMapper
 from .math_functions import MathFunctionMapper
 from .datetime_functions import DateTimeFunctionMapper
+from ..modules.conditional.conditional_function_mapper import ConditionalFunctionMapper
 
 class FunctionMapper:
     """Master mapper that delegates to specialized function mappers"""
@@ -30,6 +31,7 @@ class FunctionMapper:
         self.string_mapper = StringFunctionMapper()
         self.math_mapper = MathFunctionMapper()
         self.datetime_mapper = DateTimeFunctionMapper()
+        self.conditional_mapper = ConditionalFunctionMapper()
         
         # Cache for function categorization
         self._function_categories = self._build_function_categories()
@@ -55,6 +57,10 @@ class FunctionMapper:
         # Date/Time functions
         for func in self.datetime_mapper.function_map.keys():
             categories[func.upper()] = 'datetime'
+        
+        # Conditional functions
+        for func in self.conditional_mapper.get_supported_functions():
+            categories[func.upper()] = 'conditional'
         
         return categories
     
@@ -86,6 +92,9 @@ class FunctionMapper:
             elif category == 'datetime':
                 return self.datetime_mapper.map_function(function_name, args)
             
+            elif category == 'conditional':
+                return self.conditional_mapper.map_function(function_name, args)
+            
             else:
                 raise ValueError(f"Unknown function category: {category}")
                 
@@ -112,13 +121,18 @@ class FunctionMapper:
         """Check if function is a date/time function"""
         return self.datetime_mapper.is_datetime_function(function_name)
     
+    def is_conditional_function(self, function_name: str) -> bool:
+        """Check if function is a conditional function"""
+        return self.conditional_mapper.is_conditional_function(function_name)
+    
     def get_all_supported_functions(self) -> Dict[str, List[str]]:
         """Get all supported functions organized by category"""
         return {
             'aggregate': self.aggregate_mapper.get_supported_functions(),
             'string': self.string_mapper.get_supported_functions(),
             'math': self.math_mapper.get_supported_functions(),
-            'datetime': list(self.datetime_mapper.function_map.keys())
+            'datetime': list(self.datetime_mapper.function_map.keys()),
+            'conditional': self.conditional_mapper.get_supported_functions()
         }
     
     def get_function_info(self, function_name: str) -> Dict[str, Any]:
@@ -140,6 +154,8 @@ class FunctionMapper:
                 mapper_info = self.math_mapper.function_map.get(func_upper, {})
             elif category == 'datetime':
                 mapper_info = self.datetime_mapper.function_map.get(func_upper, {})
+            elif category == 'conditional':
+                mapper_info = self.conditional_mapper.get_function_info(func_upper) or {}
             else:
                 mapper_info = {}
             

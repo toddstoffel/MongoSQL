@@ -42,6 +42,8 @@
 ### SQL Standard References
 - **[SQL:2016 Standard Overview](https://en.wikipedia.org/wiki/SQL:2016)** - Modern SQL standard reference
 - **[MySQL 8.0 Reference Manual](https://dev.mysql.com/doc/refman/8.0/en/)** - MySQL compatibility reference
+- **[MySQL 8.4 Keywords and Reserved Words](https://dev.mysql.com/doc/refman/8.4/en/keywords.html)** - Comprehensive MySQL reserved word documentation
+- **[MariaDB Reserved Words](https://mariadb.com/docs/server/reference/sql-structure/sql-language-structure/reserved-words)** - MariaDB reserved word reference (implemented in src/reserved_words/)
 - **[ISO/IEC 9075 SQL Standard](https://www.iso.org/standard/63555.html)** - Official SQL standard specification
 
 ## Development Tools & Libraries

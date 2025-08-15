@@ -38,7 +38,7 @@ def get_field_type(field_name: str, database: str = 'classicmodels') -> str:
 def format_value(value: Any, column_name: str = None, database: str = 'classicmodels') -> str:
     """Format a value for display with MariaDB-compatible precision"""
     if value is None:
-        return 'NULL'
+        return ''
     elif isinstance(value, bool):
         return str(value).lower()
     elif isinstance(value, (int, float)):

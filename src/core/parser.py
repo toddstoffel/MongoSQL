@@ -4,14 +4,14 @@ SQL Parser for parsing MariaDB/MySQL syntax using proper token-based parsing
 import sqlparse
 from sqlparse.sql import Statement, IdentifierList, Identifier, Function, Where, Comparison
 from typing import List, Dict, Any, Optional
-from ..where import WhereParser
+from ..modules.where import WhereParser
 from sqlparse.tokens import Keyword, Name, Number, String, Operator, Punctuation, Literal
 from typing import Dict, List, Any, Optional, Union
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from ..joins.join_parser import JoinParser
-from ..joins.join_types import JoinOperation, JoinCondition, JoinType
+from ..modules.joins.join_parser import JoinParser
+from ..modules.joins.join_types import JoinOperation, JoinCondition, JoinType
 
 class TokenBasedSQLParser:
     """Parser for SQL statements using proper token-based parsing"""
@@ -88,7 +88,7 @@ class TokenBasedSQLParser:
             elif token.ttype is Keyword and token.value.upper() == 'WHERE':
                 i = self._parse_where_clause(tokens, i + 1, result)
             elif token.ttype is Keyword and token.value.upper() == 'GROUP BY':
-                from ..groupby.groupby_parser import GroupByParser
+                from ..modules.groupby.groupby_parser import GroupByParser
                 groupby_parser = GroupByParser()
                 fields, i = groupby_parser.parse_group_by_from_tokens(tokens, i + 1)
                 result['group_by'] = fields
@@ -180,8 +180,12 @@ class TokenBasedSQLParser:
         
         column_str = ''.join(result_parts).strip()
         
+        # Check if this is a CASE expression
+        if column_str.upper().startswith('CASE ') and ' END' in column_str.upper():
+            return self._parse_case_expression(column_str)
+        
         # Check if this is a function call and parse it
-        if '(' in column_str and column_str.endswith(')'):
+        if '(' in column_str and ')' in column_str:
             return self._parse_function_column(column_str)
         
         return column_str
@@ -268,6 +272,133 @@ class TokenBasedSQLParser:
             column_info['alias'] = alias
             
         return column_info
+    
+    def _parse_case_expression(self, case_str: str) -> Dict[str, Any]:
+        """Parse a CASE WHEN expression into structured format"""
+        # Extract alias if present
+        alias = None
+        case_str = case_str.strip()
+        
+        # Find the position of END keyword (case-insensitive)
+        case_upper = case_str.upper()
+        end_pos = case_upper.find(' END')
+        if end_pos != -1:
+            # Check if there's content after END (like an alias)
+            after_end = case_str[end_pos + 4:].strip()
+            if after_end.upper().startswith('AS '):
+                alias = after_end[3:].strip()
+            elif after_end and not after_end.upper().startswith('FROM'):
+                alias = after_end.strip()
+            
+            # Extract just the CASE...END part
+            case_expression = case_str[:end_pos + 4]
+        else:
+            case_expression = case_str
+        
+        # Remove CASE and END keywords from the expression part
+        expr_content = case_expression.strip()
+        if expr_content.upper().startswith('CASE'):
+            expr_content = expr_content[4:].strip()
+        if expr_content.upper().endswith('END'):
+            expr_content = expr_content[:-3].strip()
+        
+        # Parse using sqlparse tokens for proper handling
+        parsed = sqlparse.parse(f"CASE {expr_content} END")[0]
+        tokens = list(parsed.flatten())
+        
+        when_clauses = []
+        else_clause = None
+        current_when = None
+        current_then = None
+        i = 0
+        
+        while i < len(tokens):
+            token = tokens[i]
+            
+            if token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'WHEN':
+                # Start new WHEN clause
+                if current_when is not None and current_then is not None:
+                    when_clauses.append({
+                        'condition': current_when.strip(),
+                        'value': current_then.strip()
+                    })
+                current_when = ""
+                current_then = None
+                i += 1
+                continue
+                
+            elif token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'THEN':
+                # Start collecting THEN value
+                current_then = ""
+                i += 1
+                continue
+                
+            elif token.ttype is sqlparse.tokens.Keyword and token.value.upper() == 'ELSE':
+                # Save current WHEN clause if exists
+                if current_when is not None and current_then is not None:
+                    when_clauses.append({
+                        'condition': current_when.strip(),
+                        'value': current_then.strip()
+                    })
+                # Start collecting ELSE value
+                else_clause = ""
+                current_when = None
+                current_then = None
+                i += 1
+                continue
+                
+            elif token.ttype is sqlparse.tokens.Keyword and token.value.upper() in ['CASE', 'END']:
+                # Skip CASE and END keywords
+                i += 1
+                continue
+                
+            elif token.ttype is not sqlparse.tokens.Text.Whitespace:
+                # Collect content
+                if else_clause is not None:
+                    else_clause += token.value
+                elif current_then is not None:
+                    current_then += token.value
+                elif current_when is not None:
+                    current_when += token.value
+            else:
+                # Handle whitespace
+                if else_clause is not None and else_clause:
+                    else_clause += " "
+                elif current_then is not None and current_then:
+                    current_then += " "
+                elif current_when is not None and current_when:
+                    current_when += " "
+            
+            i += 1
+        
+        # Add final WHEN clause if exists
+        if current_when is not None and current_then is not None:
+            when_clauses.append({
+                'condition': current_when.strip(),
+                'value': current_then.strip()
+            })
+        
+        # Convert CASE WHEN to function format for function mapper
+        # Build args string that ConditionalFunctionMapper can understand
+        args_parts = []
+        for clause in when_clauses:
+            args_parts.append(f"WHEN {clause['condition']} THEN {clause['value']}")
+        
+        if else_clause:
+            args_parts.append(f"ELSE {else_clause.strip()}")
+        
+        args_str = ' '.join(args_parts)
+        
+        result = {
+            'function': 'CASE',
+            'args_str': args_str,
+            'original_call': case_expression
+        }
+        
+        if alias:
+            result['alias'] = alias
+            
+        return result
     
     def _parse_from_clause(self, tokens: List, start_idx: int, result: Dict) -> int:
         """Parse FROM table with optional alias"""

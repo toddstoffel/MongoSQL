@@ -28,7 +28,7 @@ def get_sql_parser():
     """Lazy load SQL parser"""
     global _sql_parser
     if _sql_parser is None:
-        from ..parsers.token_sql_parser import TokenBasedSQLParser
+        from ..core.parser import TokenBasedSQLParser
         _sql_parser = TokenBasedSQLParser()
     return _sql_parser
 
@@ -36,7 +36,7 @@ def get_sql_translator():
     """Lazy load SQL translator"""
     global _sql_translator
     if _sql_translator is None:
-        from ..translators.sql_to_mql import MongoSQLTranslator
+        from ..core.translator import MongoSQLTranslator
         _sql_translator = MongoSQLTranslator()
     return _sql_translator
 

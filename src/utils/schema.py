@@ -105,7 +105,7 @@ def get_table_columns(table_name):
 def format_value(column_name, value):
     """Format a value according to its data type"""
     if value is None:
-        return 'NULL'
+        return ''
     
     # Apply specific formatters
     if column_name in DATA_TYPE_FORMATTERS:

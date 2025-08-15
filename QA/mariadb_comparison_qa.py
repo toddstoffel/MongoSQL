@@ -210,17 +210,25 @@ class MariaDBQARunner:
             # Table content lines (contain |)
             if '|' in line and not line.startswith('+'):
                 parts = [p.strip() for p in line.split('|')]
-                # Remove empty parts from start/end due to | formatting
-                parts = [p for p in parts if p]
                 
-                if parts and not header_found:
+                # For table format, remove only the empty edge parts (due to outer |)
+                # But preserve empty strings in the middle which represent empty cell values
+                if len(parts) >= 2 and parts[0] == '' and parts[-1] == '':
+                    parts = parts[1:-1]  # Remove first and last empty parts
+                elif len(parts) >= 1 and parts[0] == '':
+                    parts = parts[1:]    # Remove only first empty part
+                elif len(parts) >= 1 and parts[-1] == '':
+                    parts = parts[:-1]   # Remove only last empty part
+                
+                if not header_found and len(parts) > 0:
                     # This is the header row
                     header_found = True
                     continue
                     
-                if parts and header_found and in_table:
-                    # This is a data row
+                if header_found and in_table:
+                    # This is a data row - preserve empty strings as they represent empty values
                     data_rows.extend(parts)
+                    break  # For single-column results, take the first data row
         
         if data_rows:
             # Return the first data value for single-column results

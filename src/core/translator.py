@@ -6,9 +6,9 @@ from ..functions.function_mapper import FunctionMapper
 import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from ..joins.join_translator import JoinTranslator
-from ..orderby import OrderByParser, OrderByTranslator
-from ..groupby import GroupByParser, GroupByTranslator
+from ..modules.joins.join_translator import JoinTranslator
+from ..modules.orderby import OrderByParser, OrderByTranslator
+from ..modules.groupby import GroupByParser, GroupByTranslator
 
 class MongoSQLTranslator:
     """Translates parsed SQL to MongoDB Query Language"""
@@ -738,11 +738,24 @@ class MongoSQLTranslator:
                         # Convert numeric arguments for better type handling
                         converted_args = []
                         for arg in args:
-                            # Remove quotes if they exist
-                            if arg.startswith("'") and arg.endswith("'"):
-                                arg = arg[1:-1]
-                            elif arg.startswith('"') and arg.endswith('"'):
-                                arg = arg[1:-1]
+                            # Check if this is a conditional function that needs quoted string preservation
+                            preserve_quotes = func_name.upper() in ['IF', 'CASE', 'COALESCE', 'NULLIF']
+                            
+                            # Handle quoted strings based on function type
+                            if ((arg.startswith("'") and arg.endswith("'")) or
+                                (arg.startswith('"') and arg.endswith('"'))):
+                                if preserve_quotes:
+                                    # Keep as quoted string for conditional functions
+                                    converted_args.append(arg)
+                                    continue
+                                else:
+                                    # Remove quotes for other functions (string, math, etc.)
+                                    arg = arg[1:-1]
+                            
+                            # Check if it's NULL literal
+                            if arg.upper() == 'NULL':
+                                converted_args.append(None)
+                                continue
                             
                             # Check if the argument contains function calls or mathematical expressions
                             if self._contains_expression(arg):
@@ -783,9 +796,9 @@ class MongoSQLTranslator:
                         # Try to map the function
                         function_mapping = self.function_mapper.map_function(func_name, args)
                         projection[alias] = function_mapping
-                    except ValueError:
-                        # Function not supported, return literal
-                        projection[alias] = {'$literal': f"Function {func_name} not supported"}
+                    except Exception as e:
+                        # Function not supported or error in mapping, return detailed error
+                        projection[alias] = {'$literal': f"Function {func_name} error: {str(e)}"}
                 else:
                     # Regular column reference (shouldn't happen without FROM)
                     col_name = col.get('column', str(col))
@@ -818,8 +831,8 @@ class MongoSQLTranslator:
                                 function_mapping = self.function_mapper.map_function(func_name, args)
                                 projection[col_stripped] = function_mapping
                                 continue
-                            except ValueError:
-                                # Function not supported, fall through to literal
+                            except Exception as e:
+                                # Function not supported or error in mapping, fall through to literal
                                 pass
                     
                     # Check if this has an alias (e.g., "1 as test", "col_name as alias")
@@ -955,24 +968,75 @@ class MongoSQLTranslator:
                 
                 # Parse arguments from args_str
                 if 'args_str' in col and col['args_str']:
-                    args_str = col['args_str'].strip()
-                    # Remove outer quotes if they exist
-                    if args_str.startswith("'") and args_str.endswith("'"):
-                        args = [args_str[1:-1]]
-                    elif args_str.startswith('"') and args_str.endswith('"'):
-                        args = [args_str[1:-1]]
-                    else:
+                    args_str = col['args_str']
+                    args = []
+                    
+                    if args_str:
+                        # Enhanced argument parsing - handle nested parentheses and quotes
+                        current_arg = ""
+                        in_quotes = False
+                        quote_char = None
+                        paren_depth = 0
+                        
+                        for char in args_str:
+                            if char in ("'", '"') and not in_quotes:
+                                in_quotes = True
+                                quote_char = char
+                                current_arg += char
+                            elif char == quote_char and in_quotes:
+                                in_quotes = False
+                                quote_char = None
+                                current_arg += char
+                            elif char == '(' and not in_quotes:
+                                paren_depth += 1
+                                current_arg += char
+                            elif char == ')' and not in_quotes:
+                                paren_depth -= 1
+                                current_arg += char
+                            elif char == ',' and not in_quotes and paren_depth == 0:
+                                # Only split on commas at the top level (not inside parentheses)
+                                args.append(current_arg.strip())
+                                current_arg = ""
+                            else:
+                                current_arg += char
+                        
+                        # Add the last argument
+                        if current_arg.strip():
+                            args.append(current_arg.strip())
+                    
+                    # Convert numeric arguments for better type handling
+                    converted_args = []
+                    for arg in args:
+                        # Remove quotes if they exist
+                        if arg.startswith("'") and arg.endswith("'"):
+                            arg = arg[1:-1]
+                        elif arg.startswith('"') and arg.endswith('"'):
+                            arg = arg[1:-1]
+                        
+                        # Check if the argument contains function calls or mathematical expressions
+                        if self._contains_expression(arg):
+                            # Evaluate the expression
+                            try:
+                                evaluated_arg = self._evaluate_argument_expression(arg)
+                                converted_args.append(evaluated_arg)
+                                continue
+                            except:
+                                # If evaluation fails, continue with original logic
+                                pass
+                        
                         # Try to convert to number if it looks like a number
                         try:
                             # Check if it's an integer
-                            if '.' not in args_str and args_str.lstrip('-').isdigit():
-                                args = [int(args_str)]
+                            if '.' not in arg and arg.lstrip('-').isdigit():
+                                converted_args.append(int(arg))
                             # Check if it's a float
                             else:
-                                args = [float(args_str)]
+                                converted_args.append(float(arg))
                         except ValueError:
                             # If conversion fails, keep as string
-                            args = [args_str]
+                            converted_args.append(arg)
+                    
+                    args = converted_args
                 
                 # Use original_call as field name if available
                 field_name = col.get('original_call', f"{func_name}({col.get('args_str', '')})")
@@ -981,9 +1045,9 @@ class MongoSQLTranslator:
                     # Map the function to MongoDB equivalent
                     function_mapping = self.function_mapper.map_function(func_name, args)
                     projection_stage[field_name] = function_mapping
-                except ValueError:
-                    # Function not supported
-                    projection_stage[field_name] = {'$literal': f"Function {func_name} not supported"}
+                except Exception as e:
+                    # Function not supported or error in mapping
+                    projection_stage[field_name] = {'$literal': f"Function {func_name} error: {str(e)}"}
             
             elif isinstance(col, dict) and 'column' in col:
                 # Regular column with alias
@@ -1063,3 +1127,183 @@ class MongoSQLTranslator:
         
         # If all else fails, return the original string
         return arg_str
+    
+    def _handle_case_when_with_from(self, case_expression: dict, parsed_query: dict) -> dict:
+        """Handle CASE WHEN expressions in MongoDB aggregation pipeline"""
+        # Build the MongoDB aggregation pipeline with $switch
+        pipeline = []
+        
+        # Add $match stage if there's a WHERE clause
+        if parsed_query.get('where'):
+            match_filter = self._translate_where(parsed_query['where'])
+            if match_filter:
+                pipeline.append({'$match': match_filter})
+        
+        # Add $limit stage if specified
+        if parsed_query.get('limit'):
+            limit_info = parsed_query['limit']
+            if 'offset' in limit_info:
+                pipeline.append({'$skip': limit_info['offset']})
+            if 'count' in limit_info:
+                pipeline.append({'$limit': limit_info['count']})
+        
+        # Build $switch expression for CASE WHEN with proper MongoDB syntax
+        switch_branches = []
+        
+        # Add WHEN clauses as branches
+        for when_clause in case_expression.get('when_clauses', []):
+            condition = when_clause.get('condition', '')
+            value = when_clause.get('value', '')
+            
+            # Parse the condition for MongoDB - for now use simple literal true
+            if condition == "1=1":
+                mongo_condition = {"$literal": True}  # Use $literal for boolean expressions
+            else:
+                # For field comparisons, parse properly
+                mongo_condition = self._parse_condition_for_mongo(condition)
+            
+            # Parse the value (remove quotes from string literals)
+            if value.startswith("'") and value.endswith("'"):
+                mongo_value = value[1:-1]  # Remove quotes
+            else:
+                mongo_value = value
+            
+            branch = {
+                "case": mongo_condition,
+                "then": mongo_value
+            }
+            switch_branches.append(branch)
+        
+        # Add ELSE clause as default
+        else_clause = case_expression.get('else_clause')
+        default_value = None
+        if else_clause:
+            if else_clause.startswith("'") and else_clause.endswith("'"):
+                default_value = else_clause[1:-1]  # Remove quotes
+            else:
+                default_value = else_clause
+        
+        # Create the $switch expression
+        switch_expression = {
+            "branches": switch_branches,
+            "default": default_value
+        }
+        
+        # Add $project stage with the $switch expression
+        field_name = "result"
+        project_stage = {
+            "$project": {
+                "_id": 0,
+                field_name: {"$switch": switch_expression}
+            }
+        }
+        pipeline.append(project_stage)
+        
+        return {
+            'operation': 'aggregate',
+            'collection': parsed_query.get('from'),
+            'pipeline': pipeline
+        }
+    
+    def _parse_condition_for_mongo(self, condition: str) -> dict:
+        """Parse a CASE WHEN condition into MongoDB expression"""
+        condition = condition.strip()
+        
+        # Handle simple equality conditions like "column = 'value'" or "1 = 1"
+        if '=' in condition and '<>' not in condition and '>=' not in condition and '<=' not in condition:
+            parts = condition.split('=', 1)
+            if len(parts) == 2:
+                left = parts[0].strip()
+                right = parts[1].strip().strip("'\"")
+                
+                # Handle literal comparison like "1 = 1"
+                if left.isdigit() and right.isdigit():
+                    left_val = int(left)
+                    right_val = int(right)
+                    return {"$eq": [left_val, right_val]}
+                
+                # Handle field references (remove backticks if present)
+                if left.startswith('`') and left.endswith('`'):
+                    left = left[1:-1]
+                
+                # Check if left side is a literal or field reference
+                if left.isdigit():
+                    # Literal comparison
+                    try:
+                        right_val = float(right)
+                    except ValueError:
+                        right_val = right
+                    return {"$eq": [int(left), right_val]}
+                else:
+                    # Field reference
+                    return {"$eq": [f"${left}", right]}
+        
+        # Handle greater than conditions
+        elif '>' in condition and not '>=' in condition:
+            parts = condition.split('>', 1)
+            if len(parts) == 2:
+                field = parts[0].strip()
+                value = parts[1].strip().strip("'\"")
+                
+                # Handle field references (remove backticks if present)
+                if field.startswith('`') and field.endswith('`'):
+                    field = field[1:-1]
+                
+                # Try to convert to number if possible
+                try:
+                    value = float(value)
+                except ValueError:
+                    pass
+                
+                # Make sure we reference the field correctly
+                return {"$gt": [f"${field}", value]}
+        
+        # Handle less than conditions
+        elif '<' in condition and not '<=' in condition and not '<>' in condition:
+            parts = condition.split('<', 1)
+            if len(parts) == 2:
+                field = parts[0].strip()
+                value = parts[1].strip().strip("'\"")
+                
+                if field.startswith('`') and field.endswith('`'):
+                    field = field[1:-1]
+                
+                try:
+                    value = float(value)
+                except ValueError:
+                    pass
+                
+                return {"$lt": [f"${field}", value]}
+        
+        # For more complex conditions, return a basic structure
+        # This would need to be expanded for full condition parsing
+        print(f"WARNING: Complex condition not fully parsed: {condition}")
+        return {"$literal": True}  # Default to true for unparsed conditions
+    
+    def _parse_value_for_mongo(self, value: str) -> Any:
+        """Parse a CASE WHEN result value into MongoDB expression"""
+        value = value.strip()
+        
+        # Handle string literals
+        if (value.startswith("'") and value.endswith("'")) or (value.startswith('"') and value.endswith('"')):
+            return value[1:-1]  # Remove quotes
+        
+        # Handle field references
+        if value.startswith('`') and value.endswith('`'):
+            return f"${value[1:-1]}"  # Convert to MongoDB field reference
+        
+        # Handle numeric values
+        try:
+            if '.' in value:
+                return float(value)
+            else:
+                return int(value)
+        except ValueError:
+            pass
+        
+        # Handle field references without backticks
+        if value.isalpha() or '_' in value:
+            return f"${value}"
+        
+        # Return as literal string
+        return value
