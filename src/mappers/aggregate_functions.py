@@ -1,0 +1,122 @@
+"""
+Aggregate function mapper for SQL to MongoDB aggregation pipeline
+Handles: COUNT, SUM, AVG, MIN, MAX, GROUP_CONCAT, etc.
+"""
+from typing import Dict, List, Any, Optional
+
+class AggregateFunctionMapper:
+    """Maps SQL aggregate functions to MongoDB aggregation pipeline operators"""
+    
+    def __init__(self):
+        self.function_map = self._build_aggregate_map()
+    
+    def _build_aggregate_map(self) -> Dict[str, Dict[str, Any]]:
+        """Build the aggregate function mapping dictionary"""
+        return {
+            'COUNT': {
+                'mongodb': '$sum',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Count documents or non-null values',
+                'default_value': 1  # For COUNT(*) we sum 1 for each document
+            },
+            'SUM': {
+                'mongodb': '$sum',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Sum numeric values'
+            },
+            'AVG': {
+                'mongodb': '$avg',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Calculate average of numeric values'
+            },
+            'MIN': {
+                'mongodb': '$min',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Find minimum value'
+            },
+            'MAX': {
+                'mongodb': '$max',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Find maximum value'
+            },
+            'FIRST': {
+                'mongodb': '$first',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Get first value in group'
+            },
+            'LAST': {
+                'mongodb': '$last',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Get last value in group'
+            },
+            'STDDEV': {
+                'mongodb': '$stdDevPop',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Calculate standard deviation'
+            },
+            'VARIANCE': {
+                'mongodb': '$stdDevPop',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Calculate variance (using stddev squared)',
+                'transform': 'square'  # Special handling needed
+            }
+        }
+    
+    def map_function(self, function_name: str, field: str = None, args: List[Any] = None) -> Dict[str, Any]:
+        """Map SQL aggregate function to MongoDB aggregation operator"""
+        func_upper = function_name.upper()
+        
+        if func_upper not in self.function_map:
+            raise ValueError(f"Unsupported aggregate function: {function_name}")
+        
+        mapping = self.function_map[func_upper]
+        
+        # Handle COUNT special cases
+        if func_upper == 'COUNT':
+            if field == '*' or field is None:
+                # COUNT(*) - count all documents
+                return {
+                    'operator': mapping['mongodb'],
+                    'value': mapping.get('default_value', 1),
+                    'stage': mapping['stage']
+                }
+            else:
+                # COUNT(field) - count non-null values
+                return {
+                    'operator': '$sum',
+                    'value': {
+                        '$cond': [
+                            {'$ne': [f'${field}', None]},
+                            1,
+                            0
+                        ]
+                    },
+                    'stage': mapping['stage']
+                }
+        
+        # Handle other aggregate functions
+        if field:
+            return {
+                'operator': mapping['mongodb'],
+                'value': f'${field}',
+                'stage': mapping['stage']
+            }
+        
+        raise ValueError(f"Field required for aggregate function: {function_name}")
+    
+    def is_aggregate_function(self, function_name: str) -> bool:
+        """Check if function is an aggregate function"""
+        return function_name.upper() in self.function_map
+    
+    def get_supported_functions(self) -> List[str]:
+        """Get list of supported aggregate functions"""
+        return list(self.function_map.keys())
