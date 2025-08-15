@@ -1,6 +1,6 @@
 # MongoSQL - SQL to MongoDB Query Language Translator
 
-A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Language (MQL) and executes queries against MongoDB databases with **91.0% compatibility** across comprehensive test suites.
+A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Language (MQL) and executes queries against MongoDB databases with **95.5% compatibility** across comprehensive test suites.
 
 ## Features
 
@@ -22,7 +22,7 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 
 ## Compatibility Status
 
-**Current Test Results (91.0% success rate):**
+**Current Test Results (95.5% success rate):**
 - ✅ **DATETIME functions**: 22/22 (100.0%) - Complete date/time function support
 - ✅ **STRING functions**: 10/10 (100.0%) - Full string manipulation support  
 - ✅ **MATH functions**: 10/10 (100.0%) - Complete mathematical operations
@@ -31,8 +31,32 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 - ✅ **GROUP BY**: 3/3 (100.0%) - Full GROUP BY with HAVING support
 - ✅ **ORDER BY**: 3/3 (100.0%) - Full sorting with proper collation
 - ✅ **DISTINCT**: 3/3 (100.0%) - All DISTINCT operations supported
-- 🔄 **CONDITIONAL**: 1/4 (25.0%) - IF, CASE WHEN, COALESCE functions in development
-- 🔄 **SUBQUERIES**: 0/3 (0.0%) - Complex subquery support planned
+- ✅ **CONDITIONAL**: 4/4 (100.0%) - IF, CASE WHEN, COALESCE, NULLIF fully implemented
+- 🔄 **SUBQUERIES**: 0/3 (0.0%) - Complex subquery support in development
+
+## Recent Updates
+
+### Version 1.2.0 (August 15, 2025)
+**🎉 Major Conditional Functions Update - Compatibility increased to 95.5%**
+
+#### ✅ Completed Features:
+- **COALESCE Function**: Fixed evaluation engine to properly handle `$ifNull` operators
+- **NULLIF Function**: Complete implementation with proper empty string formatting  
+- **Expression Evaluation**: Enhanced MongoDB client with `$eq` and `$ifNull` operator support
+- **Result Formatting**: Improved null value handling to match MariaDB behavior
+- **QA Parser**: Fixed table output parsing to handle empty cell values correctly
+
+#### 🔧 Technical Improvements:
+- Enhanced `mongodb_client.py` with comprehensive expression evaluation
+- Updated argument parsing in `translator.py` for conditional function compatibility
+- Fixed result formatting pipeline from evaluation through display
+- Improved QA test parser robustness for edge cases
+
+#### 📊 Test Results:
+- **Before**: 62/67 tests passing (92.5% success rate)
+- **After**: 64/67 tests passing (95.5% success rate)
+- **Fixed**: COALESCE and NULLIF functions now working correctly
+- **Remaining**: Only 3 subquery-related tests pending
 
 ## Installation
 
@@ -47,7 +71,12 @@ cd MongoSQL
 pip install -r requirements.txt
 ```
 
-3. Configure MongoDB connection:
+3. Make the mongosql script executable:
+```bash
+chmod +x mongosql
+```
+
+4. Configure MongoDB connection:
 ```bash
 cp .env.example .env
 # Edit .env with your MongoDB connection details
@@ -75,25 +104,25 @@ This ensures ORDER BY and comparison operations return identical results between
 ### Interactive Mode (Default)
 
 ```bash
-python mongosql.py
+./mongosql
 ```
 
 Or with connection parameters:
 
 ```bash
-python mongosql.py --host localhost --port 27017 --database mydb --username myuser -p
+./mongosql --host localhost --port 27017 --database mydb --username myuser -p
 ```
 
 ### Execute Single Statement
 
 ```bash
-python -m src.cli.main classicmodels -e "SELECT * FROM users WHERE age > 25"
+./mongosql classicmodels -e "SELECT * FROM customers WHERE customerNumber > 100"
 ```
 
 ### Batch Mode
 
 ```bash
-cat queries.sql | python -m src.cli.main classicmodels --batch
+cat queries.sql | ./mongosql classicmodels --batch
 ```
 
 ## Advanced Features
@@ -125,8 +154,11 @@ SELECT CASE
   ELSE 'Basic'
 END as tier FROM customers;
 
--- COALESCE function
+-- COALESCE function (returns first non-null value)
 SELECT COALESCE(city, 'Unknown') as location FROM customers;
+
+-- NULLIF function (returns null if values are equal, otherwise first value)
+SELECT NULLIF(customerName, 'Unknown Customer') as name FROM customers;
 ```
 
 ### JOIN Support
@@ -163,40 +195,40 @@ SELECT DISTINCT city, country FROM customers;
 
 ```sql
 -- SQL
-SELECT name, age FROM users WHERE age > 25 ORDER BY name LIMIT 10;
+SELECT customerName, customerNumber FROM customers WHERE customerNumber > 100 ORDER BY customerName LIMIT 10;
 
 -- Translates to MongoDB
-db.users.find({"age": {"$gt": 25}}, {"name": 1, "age": 1}).sort({"name": 1}).limit(10)
+db.customers.find({"customerNumber": {"$gt": 100}}, {"customerName": 1, "customerNumber": 1}).sort({"customerName": 1}).limit(10)
 ```
 
 ### INSERT Statements
 
 ```sql
 -- SQL
-INSERT INTO users (name, age, email) VALUES ('John', 30, 'john@example.com');
+INSERT INTO customers (customerName, customerNumber, contactFirstName) VALUES ('New Company', 500, 'John');
 
 -- Translates to MongoDB
-db.users.insertOne({"name": "John", "age": 30, "email": "john@example.com"})
+db.customers.insertOne({"customerName": "New Company", "customerNumber": 500, "contactFirstName": "John"})
 ```
 
 ### UPDATE Statements
 
 ```sql
 -- SQL
-UPDATE users SET age = 31 WHERE name = 'John';
+UPDATE customers SET contactFirstName = 'Jane' WHERE customerNumber = 500;
 
 -- Translates to MongoDB
-db.users.updateMany({"name": "John"}, {"$set": {"age": 31}})
+db.customers.updateMany({"customerNumber": 500}, {"$set": {"contactFirstName": "Jane"}})
 ```
 
 ### DELETE Statements
 
 ```sql
 -- SQL
-DELETE FROM users WHERE age < 18;
+DELETE FROM customers WHERE customerNumber = 500;
 
 -- Translates to MongoDB
-db.users.deleteMany({"age": {"$lt": 18}})
+db.customers.deleteMany({"customerNumber": {"$eq": 500}})
 ```
 
 ## Supported SQL Functions
@@ -256,7 +288,7 @@ Environment variables (`.env` file):
 
 ```env
 # MongoDB Configuration
-MONGO_HOST=cluster0.7gb72xv.mongodb.net
+MONGO_HOST=localhost
 MONGO_USERNAME=username
 MONGO_PASSWORD=password
 MONGO_AUTH_DATABASE=admin
@@ -270,8 +302,12 @@ MONGO_APP_NAME=MongoSQL
 MONGODB_TIMEOUT=5000
 MONGODB_SSL=false
 
+# For MongoDB Atlas, use format like:
+# MONGO_HOST=cluster0.xxxxx.mongodb.net
+# MONGODB_SSL=true
+
 # MariaDB Configuration (for QA comparison testing)
-MARIADB_HOST=your-mariadb-host
+MARIADB_HOST=localhost
 MARIADB_USERNAME=username
 MARIADB_PASSWORD=password
 MARIADB_DATABASE=classicmodels
@@ -367,10 +403,12 @@ Complete GROUP BY functionality with aggregation support:
 
 #### Conditional Module (`src/conditional/`)
 SQL conditional functions translated to MongoDB operators:
-- **IF Function**: `$cond` operator for conditional logic
-- **CASE WHEN**: `$switch` operator for multi-branch conditions
-- **COALESCE**: Nested `$ifNull` operators for null handling
-- **NULLIF**: `$cond` with `$eq` comparison for null conversion
+- **IF Function**: `$cond` operator for conditional logic ✅
+- **CASE WHEN**: `$switch` operator for multi-branch conditions ✅  
+- **COALESCE**: Nested `$ifNull` operators for null handling ✅
+- **NULLIF**: `$cond` with `$eq` comparison for null conversion ✅
+- **Expression Evaluation**: Comprehensive MongoDB operator support
+- **Edge Case Handling**: Proper null value formatting and display
 
 #### Reserved Words Module (`src/reserved_words/`)
 MariaDB compatibility with proper identifier handling:
@@ -410,11 +448,12 @@ MongoDB connection and query execution:
 ## Testing Framework
 
 ### Quality Assurance (`QA/`)
-Comprehensive testing achieving 91.0% compatibility:
+Comprehensive testing achieving 95.5% compatibility:
 - **67 Test Cases** across 10 functional categories
 - **Side-by-side Comparison**: MariaDB vs MongoDB result validation
 - **Collation Testing**: Ensures identical sorting behavior
 - **Automated Reporting**: Detailed success/failure analysis
+- **Recent Improvements**: Fixed COALESCE and NULLIF conditional functions
 
 ## Error Handling
 
@@ -426,7 +465,7 @@ The translator provides helpful error messages for:
 
 ## Limitations and Roadmap
 
-### Currently Working (91.0% compatibility)
+### Currently Working (95.5% compatibility)
 - ✅ All basic SQL operations (SELECT, INSERT, UPDATE, DELETE)
 - ✅ Comprehensive function library (47+ functions)
 - ✅ Complete JOIN support (INNER, LEFT, RIGHT, multi-table)
@@ -435,12 +474,11 @@ The translator provides helpful error messages for:
 - ✅ All DISTINCT operations
 - ✅ All aggregate functions
 - ✅ MariaDB reserved words handling
-- ✅ Basic conditional functions (IF working)
+- ✅ **Complete conditional functions** (IF, CASE WHEN, COALESCE, NULLIF)
 
 ### In Development
-- 🔄 **Advanced conditional functions** (CASE WHEN, COALESCE, NULLIF improvements)
-- 🔄 **Complex subqueries** - Advanced query nesting support
-- 🔄 **Additional MariaDB functions** - Expanding function library
+- 🔄 **Complex subqueries** - Advanced query nesting support (3 remaining test cases)
+- 🔄 **Additional MariaDB functions** - Expanding function library beyond current 47+
 
 ### MongoDB-Specific Considerations
 - **Document-based nature**: Complex JOINs are converted to aggregation pipelines
