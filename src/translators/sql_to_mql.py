@@ -7,6 +7,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from ..joins.join_translator import JoinTranslator
+from ..orderby import OrderByParser, OrderByTranslator
 
 class MongoSQLTranslator:
     """Translates parsed SQL to MongoDB Query Language"""
@@ -14,6 +15,8 @@ class MongoSQLTranslator:
     def __init__(self):
         self.function_mapper = FunctionMapper()
         self.join_translator = JoinTranslator()
+        self.orderby_parser = OrderByParser()
+        self.orderby_translator = OrderByTranslator()
     
     def _is_aggregate_function(self, function_name: str) -> bool:
         """Check if a function is an aggregate function using the function mapper"""
@@ -144,13 +147,29 @@ class MongoSQLTranslator:
             mql['projection'] = projection
             mql['query_columns'] = query_columns  # Preserve query column order
         
-        # Handle ORDER BY
-        if parsed_sql.get('order_by'):
-            sort_spec = []
-            for order_item in parsed_sql['order_by']:
-                direction = 1 if order_item['direction'] == 'ASC' else -1
-                sort_spec.append((order_item['field'], direction))
-            mql['sort'] = sort_spec
+        # Handle ORDER BY using modular parser
+        if parsed_sql.get('order_by') or parsed_sql.get('original_sql'):
+            # First try to use parsed order_by if available
+            if parsed_sql.get('order_by'):
+                sort_spec = []
+                for order_item in parsed_sql['order_by']:
+                    direction = 1 if order_item['direction'] == 'ASC' else -1
+                    sort_spec.append((order_item['field'], direction))
+                mql['sort'] = sort_spec
+            else:
+                # Try to parse ORDER BY from original SQL using our modular parser
+                original_sql = parsed_sql.get('original_sql', '')
+                if original_sql:
+                    order_by_clause = self.orderby_parser.parse_order_by(original_sql)
+                    if order_by_clause and not order_by_clause.is_empty():
+                        # Convert to MongoDB sort specification
+                        sort_stages = self.orderby_translator.get_sort_pipeline_stage(order_by_clause)
+                        if sort_stages:
+                            # Extract sort specification from pipeline stage
+                            sort_spec = []
+                            for field, direction in sort_stages[0]['$sort'].items():
+                                sort_spec.append((field, direction))
+                            mql['sort'] = sort_spec
         
         # Handle LIMIT
         if parsed_sql.get('limit'):
@@ -185,6 +204,25 @@ class MongoSQLTranslator:
                 field_name: {'$first': f'${field_name}'}
             }
         })
+        
+        # Add ORDER BY using modular parser
+        if parsed_sql.get('order_by') or parsed_sql.get('original_sql'):
+            if parsed_sql.get('order_by'):
+                # Use parsed order_by if available
+                sort_spec = {}
+                for order_item in parsed_sql['order_by']:
+                    direction = 1 if order_item['direction'] == 'ASC' else -1
+                    sort_spec[order_item['field']] = direction
+                pipeline.append({'$sort': sort_spec})
+            else:
+                # Try to parse ORDER BY from original SQL
+                original_sql = parsed_sql.get('original_sql', '')
+                if original_sql:
+                    order_by_clause = self.orderby_parser.parse_order_by(original_sql)
+                    if order_by_clause and not order_by_clause.is_empty():
+                        sort_stages = self.orderby_translator.get_sort_pipeline_stage(order_by_clause)
+                        if sort_stages:
+                            pipeline.extend(sort_stages)
         
         # Add limit if specified
         if parsed_sql.get('limit') and 'count' in parsed_sql['limit']:
@@ -584,6 +622,28 @@ class MongoSQLTranslator:
             group_stage['$group'][f'{func_name}({field})'] = {'$avg': f'${field}'}
         
         pipeline.append(group_stage)
+        
+        # Add ORDER BY using modular parser (if applicable for aggregate results)
+        if parsed_sql.get('order_by') or parsed_sql.get('original_sql'):
+            if parsed_sql.get('order_by'):
+                # Use parsed order_by if available
+                sort_spec = {}
+                for order_item in parsed_sql['order_by']:
+                    direction = 1 if order_item['direction'] == 'ASC' else -1
+                    # For aggregate results, we may need to map field names
+                    field_name = order_item['field']
+                    if field_name in [f'{func_name}({field})']:
+                        sort_spec[field_name] = direction
+                pipeline.append({'$sort': sort_spec})
+            else:
+                # Try to parse ORDER BY from original SQL
+                original_sql = parsed_sql.get('original_sql', '')
+                if original_sql:
+                    order_by_clause = self.orderby_parser.parse_order_by(original_sql)
+                    if order_by_clause and not order_by_clause.is_empty():
+                        sort_stages = self.orderby_translator.get_sort_pipeline_stage(order_by_clause)
+                        if sort_stages:
+                            pipeline.extend(sort_stages)
         
         # Remove the _id field in projection
         pipeline.append({'$project': {'_id': 0}})

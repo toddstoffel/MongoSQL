@@ -290,8 +290,10 @@ class MariaDBFormatter:
                     else:
                         # Handle qualified column names (table.column -> column)
                         if isinstance(col, str) and '.' in col:
-                            col = col.split('.')[-1]
-                        columns.append(col_str)
+                            col_without_table = col.split('.')[-1]
+                            columns.append(col_without_table)
+                        else:
+                            columns.append(col_str)
             
             # Only include columns that actually exist in the results
             columns = [col for col in columns if any(col in doc for doc in results)]

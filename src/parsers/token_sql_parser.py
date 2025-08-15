@@ -87,7 +87,8 @@ class TokenBasedSQLParser:
                 i = self._parse_from_clause(tokens, i + 1, result)
             elif token.ttype is Keyword and token.value.upper() == 'WHERE':
                 i = self._parse_where_clause(tokens, i + 1, result)
-            elif token.ttype is Keyword and token.value.upper() == 'ORDER':
+            elif token.ttype is Keyword and ('ORDER' in token.value.upper()):
+                print(f"DEBUG: Found ORDER token at {i}: {token.ttype} -> '{token.value}'")
                 i = self._parse_order_clause(tokens, i, result)
             elif token.ttype is Keyword and token.value.upper() == 'LIMIT':
                 i = self._parse_limit_clause(tokens, i + 1, result)
@@ -434,19 +435,25 @@ class TokenBasedSQLParser:
     
     def _parse_order_clause(self, tokens: List, start_idx: int, result: Dict) -> int:
         """Parse ORDER BY clause"""
+        print(f"DEBUG: _parse_order_clause called with token: '{tokens[start_idx].value}'")
         i = start_idx
         
-        # Skip ORDER and BY keywords
-        while i < len(tokens) and tokens[i].value.upper() != 'BY':
+        # Skip ORDER BY keyword (might be combined as "ORDER BY" or separate "ORDER" "BY")
+        if tokens[i].value.upper() == 'ORDER BY':
+            # Combined token, move to next
             i += 1
-        i += 1  # Skip BY
+        else:
+            # Separate tokens, skip ORDER and BY
+            while i < len(tokens) and tokens[i].value.upper() != 'BY':
+                i += 1
+            i += 1  # Skip BY
         
         order_tokens = []
         while i < len(tokens):
             token = tokens[i]
             
-            # Stop at LIMIT
-            if token.ttype is Keyword and token.value.upper() == 'LIMIT':
+            # Stop at LIMIT or other keywords
+            if token.ttype is Keyword and token.value.upper() in ['LIMIT', 'GROUP', 'HAVING']:
                 break
             
             order_tokens.append(token)

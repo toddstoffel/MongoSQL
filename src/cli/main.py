@@ -189,6 +189,10 @@ def execute_statement(sql, parser, translator, db_client, vertical_format=False,
         # Parse SQL
         parsed = parser.parse(sql)
         
+        # Add original SQL to parsed result for ORDER BY processing
+        if isinstance(parsed, dict):
+            parsed['original_sql'] = sql
+        
         # Translate to MQL
         mql_query = translator.translate(parsed)
         

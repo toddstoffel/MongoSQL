@@ -255,7 +255,19 @@ class MongoDBClient:
                 cursor = collection.find(filter_doc, projection)
                 
                 if sort:
-                    cursor = cursor.sort(sort)
+                    # Use collation to match MariaDB's utf8mb4_unicode_ci behavior
+                    # This ensures case-insensitive sorting like MariaDB
+                    collation = {
+                        'locale': 'en',
+                        'caseLevel': False,  # Case-insensitive like utf8mb4_unicode_ci
+                        'strength': 1,       # Primary level only (ignore case, accents)
+                        'numericOrdering': False
+                    }
+                    cursor = cursor.sort(sort).collation(collation)
+                else:
+                    # No sorting, just apply collation if available
+                    pass
+                    
                 if skip:
                     cursor = cursor.skip(skip)
                 if limit:
@@ -308,7 +320,23 @@ class MongoDBClient:
             
             elif operation == 'aggregate':
                 pipeline = mql_query.get('pipeline', [])
-                return list(collection.aggregate(pipeline))
+                
+                # Add collation for aggregation pipelines with $sort stages
+                # to match MariaDB's utf8mb4_unicode_ci behavior
+                collation = {
+                    'locale': 'en',
+                    'caseLevel': False,  # Case-insensitive like utf8mb4_unicode_ci  
+                    'strength': 1,       # Primary level only (ignore case, accents)
+                    'numericOrdering': False
+                }
+                
+                # Check if pipeline contains $sort stages
+                has_sort = any('$sort' in stage for stage in pipeline if isinstance(stage, dict))
+                
+                if has_sort:
+                    return list(collection.aggregate(pipeline, collation=collation))
+                else:
+                    return list(collection.aggregate(pipeline))
             
             elif operation == 'distinct':
                 field = mql_query.get('field')

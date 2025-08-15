@@ -98,12 +98,18 @@ class MariaDBQARunner:
         self.connection = None
         self.test_results: List[QATestResult] = []
         
-        # Predefined test suites by category
+        # Predefined test suites by category - EXPANDED COVERAGE
         self.test_suites = {
             'datetime': self._get_datetime_tests(),
             'string': self._get_string_tests(),
             'math': self._get_math_tests(),
             'aggregate': self._get_aggregate_tests(),
+            'joins': self._get_join_tests(),
+            'groupby': self._get_groupby_tests(),
+            'orderby': self._get_orderby_tests(),
+            'distinct': self._get_distinct_tests(),
+            'conditional': self._get_conditional_tests(),
+            'subqueries': self._get_subquery_tests()
         }
         
     def connect_to_mariadb(self) -> bool:
@@ -162,38 +168,8 @@ class MariaDBQARunner:
                 if not output:
                     return None, "No output from translator"
                 
-                lines = output.split('\n')
-                
-                # Find the data rows (skip header and separator lines)
-                header_found = False
-                for i, line in enumerate(lines):
-                    line = line.strip()
-                    # Skip empty lines and separator lines (made of +, -, | and spaces only)
-                    if not line or set(line) <= {'+', '-', '|', ' '}:
-                        continue
-                    
-                    # Look for actual data rows (contain | but not headers)
-                    if '|' in line and not line.startswith('+'):
-                        parts = line.split('|')
-                        if len(parts) >= 2:
-                            result_value = parts[1].strip()
-                            
-                            # If this looks like a header (contains SQL), mark it and continue
-                            if any(keyword in result_value.upper() for keyword in ['SELECT', 'FROM', 'WHERE', '(', ')']):
-                                header_found = True
-                                continue
-                            
-                            # This is the data row - return it
-                            if result_value and header_found:
-                                return result_value, None
-                        parts = line.split('|')
-                        # Get the middle part (skip leading and trailing empty parts)
-                        for part in parts:
-                            part = part.strip()
-                            if part:  # Found non-empty value
-                                return part, None
-                
-                return None, "Could not parse result from output"
+                # Use modular table parser
+                return self._parse_table_output(output)
             else:
                 return None, result.stderr.strip()
                 
@@ -201,6 +177,56 @@ class MariaDBQARunner:
             return None, f"Timeout after {self.timeout} seconds"
         except Exception as e:
             return None, str(e)
+    
+    def _parse_table_output(self, output: str) -> Tuple[Any, str]:
+        """Modular table output parser - handles MySQL/MariaDB table format"""
+        lines = output.split('\n')
+        
+        # Find table structure: +---+, | header |, +---+, | data |, +---+
+        data_rows = []
+        in_table = False
+        header_found = False
+        
+        for line in lines:
+            line = line.strip()
+            
+            # Skip empty lines
+            if not line:
+                continue
+                
+            # Table border lines (start with +)
+            if line.startswith('+') and set(line) <= {'+', '-', ' '}:
+                if header_found and data_rows:
+                    # End of table after data rows
+                    break
+                elif header_found:
+                    # Border after header, data rows come next
+                    in_table = True
+                else:
+                    # Start of table or border after first data row
+                    in_table = True
+                continue
+            
+            # Table content lines (contain |)
+            if '|' in line and not line.startswith('+'):
+                parts = [p.strip() for p in line.split('|')]
+                # Remove empty parts from start/end due to | formatting
+                parts = [p for p in parts if p]
+                
+                if parts and not header_found:
+                    # This is the header row
+                    header_found = True
+                    continue
+                    
+                if parts and header_found and in_table:
+                    # This is a data row
+                    data_rows.extend(parts)
+        
+        if data_rows:
+            # Return the first data value for single-column results
+            return data_rows[0], None
+        else:
+            return None, "Could not parse result from table output"
             
     def run_single_test(self, sql: str, category: str, function_name: str) -> QATestResult:
         """Run a single comparison test"""
@@ -414,11 +440,61 @@ class MariaDBQARunner:
             ("SELECT MIN(creditLimit) FROM customers LIMIT 1", "MIN"),
             ("SELECT MAX(creditLimit) FROM customers LIMIT 1", "MAX"),
         ]
+    
+    def _get_join_tests(self) -> List[Tuple[str, str]]:
+        """Get JOIN operation test cases"""
+        return [
+            ("SELECT c.customerName, o.orderDate FROM customers c INNER JOIN orders o ON c.customerNumber = o.customerNumber LIMIT 1", "INNER_JOIN"),
+            ("SELECT c.customerName, o.orderDate FROM customers c LEFT JOIN orders o ON c.customerNumber = o.customerNumber LIMIT 1", "LEFT_JOIN"),
+            ("SELECT c.customerName, o.orderDate FROM customers c RIGHT JOIN orders o ON c.customerNumber = o.customerNumber LIMIT 1", "RIGHT_JOIN"),
+            ("SELECT c.customerName, od.quantityOrdered FROM customers c INNER JOIN orders o ON c.customerNumber = o.customerNumber INNER JOIN orderdetails od ON o.orderNumber = od.orderNumber LIMIT 1", "MULTI_JOIN"),
+        ]
+    
+    def _get_groupby_tests(self) -> List[Tuple[str, str]]:
+        """Get GROUP BY operation test cases"""
+        return [
+            ("SELECT country, COUNT(*) FROM customers GROUP BY country ORDER BY country LIMIT 1", "GROUP_BY_COUNT"),
+            ("SELECT country, AVG(creditLimit) FROM customers GROUP BY country ORDER BY country LIMIT 1", "GROUP_BY_AVG"),
+            ("SELECT country, SUM(creditLimit) FROM customers GROUP BY country HAVING SUM(creditLimit) > 100000 ORDER BY country LIMIT 1", "GROUP_BY_HAVING"),
+        ]
+    
+    def _get_orderby_tests(self) -> List[Tuple[str, str]]:
+        """Get ORDER BY operation test cases"""
+        return [
+            ("SELECT customerName FROM customers ORDER BY customerName ASC LIMIT 1", "ORDER_BY_ASC"),
+            ("SELECT customerName FROM customers ORDER BY customerName DESC LIMIT 1", "ORDER_BY_DESC"),
+            ("SELECT customerName, creditLimit FROM customers ORDER BY creditLimit DESC, customerName ASC LIMIT 1", "ORDER_BY_MULTI"),
+        ]
+    
+    def _get_distinct_tests(self) -> List[Tuple[str, str]]:
+        """Get DISTINCT operation test cases"""
+        return [
+            ("SELECT DISTINCT country FROM customers WHERE country = 'USA'", "DISTINCT_SPECIFIC"),
+            ("SELECT DISTINCT customerNumber FROM customers WHERE customerNumber = 103", "DISTINCT_NUMBER"),
+            ("SELECT DISTINCT city FROM customers WHERE customerNumber = 103", "DISTINCT_SIMPLE"),
+        ]
+    
+    def _get_conditional_tests(self) -> List[Tuple[str, str]]:
+        """Get conditional function test cases"""
+        return [
+            ("SELECT IF(creditLimit > 50000, 'High', 'Low') FROM customers LIMIT 1", "IF_FUNCTION"),
+            ("SELECT CASE WHEN creditLimit > 100000 THEN 'Premium' WHEN creditLimit > 50000 THEN 'Standard' ELSE 'Basic' END FROM customers LIMIT 1", "CASE_WHEN"),
+            ("SELECT COALESCE(NULL, 'Default Value')", "COALESCE"),
+            ("SELECT NULLIF('test', 'test')", "NULLIF"),
+        ]
+    
+    def _get_subquery_tests(self) -> List[Tuple[str, str]]:
+        """Get subquery test cases"""
+        return [
+            ("SELECT customerName FROM customers WHERE customerNumber = (SELECT customerNumber FROM orders ORDER BY orderDate DESC LIMIT 1)", "SUBQUERY_WHERE"),
+            ("SELECT customerName FROM customers WHERE customerNumber IN (SELECT customerNumber FROM orders LIMIT 3)", "SUBQUERY_IN"),
+            ("SELECT customerName FROM customers WHERE EXISTS (SELECT 1 FROM orders WHERE orders.customerNumber = customers.customerNumber) LIMIT 1", "SUBQUERY_EXISTS"),
+        ]
 
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='MariaDB vs MongoDB Translator QA Test Suite')
-    parser.add_argument('--category', choices=['datetime', 'string', 'math', 'aggregate', 'all'], 
+    parser.add_argument('--category', choices=['datetime', 'string', 'math', 'aggregate', 'joins', 'groupby', 'orderby', 'distinct', 'conditional', 'subqueries', 'all'], 
                         default='all', help='Test category to run')
     parser.add_argument('--function', help='Test specific function only')
     parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed output')
