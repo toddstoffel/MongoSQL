@@ -17,7 +17,7 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd Translator
+cd MongoSQL
 ```
 
 2. Install dependencies:

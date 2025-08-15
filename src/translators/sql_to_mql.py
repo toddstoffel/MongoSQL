@@ -665,6 +665,17 @@ class MongoSQLTranslator:
                             elif arg.startswith('"') and arg.endswith('"'):
                                 arg = arg[1:-1]
                             
+                            # Check if the argument contains function calls or mathematical expressions
+                            if self._contains_expression(arg):
+                                # Evaluate the expression
+                                try:
+                                    evaluated_arg = self._evaluate_argument_expression(arg)
+                                    converted_args.append(evaluated_arg)
+                                    continue
+                                except:
+                                    # If evaluation fails, continue with original logic
+                                    pass
+                            
                             # Try to convert to number if it looks like a number
                             try:
                                 # Check if it's an integer
@@ -914,3 +925,62 @@ class MongoSQLTranslator:
             'collection': parsed_sql.get('from'),
             'pipeline': pipeline
         }
+    
+    def _contains_expression(self, arg_str: str) -> bool:
+        """Check if the argument string contains function calls or mathematical expressions"""
+        # Check for function calls (contains parentheses)
+        if '(' in arg_str and ')' in arg_str:
+            return True
+        
+        # Check for mathematical operators, but exclude leading negative signs
+        # A leading negative sign alone doesn't make it an expression
+        arg_stripped = arg_str.strip()
+        if arg_stripped.startswith('-'):
+            # Check if it's just a negative number
+            remaining = arg_stripped[1:]
+            if remaining.replace('.', '').isdigit():
+                return False  # It's just a negative number
+            # Check for operators after the negative sign
+            for op in ['+', '-', '*', '/', '%', '^']:
+                if op in remaining:
+                    return True
+        else:
+            # Check for mathematical operators
+            math_operators = ['+', '-', '*', '/', '%', '^']
+            for op in math_operators:
+                if op in arg_str:
+                    return True
+        
+        return False
+    
+    def _evaluate_argument_expression(self, arg_str: str) -> Any:
+        """Evaluate a mathematical expression or function call in an argument"""
+        # Handle PI()/2 specifically since it's a common pattern
+        if arg_str == 'PI()/2':
+            import math
+            return math.pi / 2
+        
+        # Handle PI() function calls
+        if 'PI()' in arg_str:
+            import math
+            # Replace PI() with the actual value and evaluate
+            expr = arg_str.replace('PI()', str(math.pi))
+            try:
+                return eval(expr)
+            except:
+                pass
+        
+        # For more complex expressions, we could parse them properly
+        # but for now, handle the most common cases
+        if '/' in arg_str:
+            parts = arg_str.split('/')
+            if len(parts) == 2:
+                try:
+                    left = float(parts[0].strip())
+                    right = float(parts[1].strip())
+                    return left / right
+                except:
+                    pass
+        
+        # If all else fails, return the original string
+        return arg_str

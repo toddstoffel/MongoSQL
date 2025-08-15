@@ -189,7 +189,7 @@ class MongoDBClient:
     def get_collections(self) -> List[str]:
         """Get list of collections in current database"""
         if self.database is None:
-            raise Exception("No database selected")
+            raise Exception("ERROR 1046 (3D000): No database selected")
         
         return self.database.list_collection_names()
     
@@ -220,7 +220,7 @@ class MongoDBClient:
         
         # For other operations, require a database
         if self.database is None:
-            raise Exception("No database selected")
+            raise Exception("ERROR 1046 (3D000): No database selected")
         
         # Handle operations that don't require a collection
         if operation == 'show_collections':
@@ -480,19 +480,69 @@ class MongoDBClient:
                     return None
             return float(values) if values is not None else None
         
+        elif '$cond' in expression:
+            # Conditional expression (if-then-else)
+            cond_expr = expression['$cond']
+            if isinstance(cond_expr, dict):
+                if_expr = cond_expr.get('if')
+                then_expr = cond_expr.get('then')
+                else_expr = cond_expr.get('else')
+                
+                # Evaluate the condition
+                if isinstance(if_expr, dict):
+                    condition_result = self._evaluate_expression(if_expr)
+                else:
+                    condition_result = bool(if_expr)
+                
+                # Return then or else based on condition
+                if condition_result:
+                    if isinstance(then_expr, dict):
+                        return self._evaluate_expression(then_expr)
+                    return then_expr
+                else:
+                    if isinstance(else_expr, dict):
+                        return self._evaluate_expression(else_expr)
+                    return else_expr
+            return None
+        
+        elif '$gte' in expression:
+            # Greater than or equal comparison
+            values = expression['$gte']
+            if isinstance(values, list) and len(values) >= 2:
+                left, right = values[0], values[1]
+                
+                # Evaluate nested expressions
+                if isinstance(left, dict):
+                    left = self._evaluate_expression(left)
+                if isinstance(right, dict):
+                    right = self._evaluate_expression(right)
+                
+                try:
+                    return float(left) >= float(right)
+                except:
+                    return str(left) >= str(right)
+            return False
+        
         elif '$subtract' in expression:
             # Subtraction
             values = expression['$subtract']
             if isinstance(values, list) and len(values) >= 2:
                 try:
-                    result = float(values[0])
+                    # Evaluate the first value
+                    first_val = values[0]
+                    if isinstance(first_val, dict):
+                        first_val = self._evaluate_expression(first_val)
+                    result = float(first_val)
+                    
+                    # Subtract the remaining values
                     for val in values[1:]:
                         if isinstance(val, dict):
                             # Recursively evaluate nested expressions
                             val = self._evaluate_expression(val)
                         result -= float(val) if val is not None else 0
-                    # Preserve integer type if inputs were integers
-                    if all(isinstance(v, int) or (isinstance(v, dict) and isinstance(self._evaluate_expression(v), int)) for v in values):
+                    
+                    # Preserve integer type if result is a whole number
+                    if result == int(result):
                         return int(result)
                     return result
                 except:
@@ -568,7 +618,25 @@ class MongoDBClient:
             values = expression['$substr']
             if isinstance(values, list) and len(values) >= 3:
                 string, start, length = values[0], values[1], values[2]
-                return str(string)[start:start+length]
+                
+                # Evaluate any nested expressions
+                if isinstance(string, dict):
+                    string = self._evaluate_expression(string)
+                if isinstance(start, dict):
+                    start = self._evaluate_expression(start)
+                if isinstance(length, dict):
+                    length = self._evaluate_expression(length)
+                
+                # Convert to proper types
+                string = str(string)
+                start = int(start) if start is not None else 0
+                length = int(length) if length is not None else len(string)
+                
+                # Ensure start is not negative and doesn't exceed string length
+                start = max(0, min(start, len(string)))
+                length = max(0, length)
+                
+                return string[start:start+length]
             return str(values)
         
         elif '$trim' in expression:
@@ -624,9 +692,19 @@ class MongoDBClient:
                 return pow(float(base), float(exponent))
             return float(values)
         
+        elif '$sin' in expression:
+            # Sine
+            value = expression['$sin']
+            if isinstance(value, dict):
+                value = self._evaluate_expression(value)
+            import math
+            return math.sin(float(value))
+        
         elif '$cos' in expression:
             # Cosine
             value = expression['$cos']
+            if isinstance(value, dict):
+                value = self._evaluate_expression(value)
             import math
             return math.cos(float(value))
         

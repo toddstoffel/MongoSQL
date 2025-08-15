@@ -145,7 +145,9 @@ class MariaDBQARunner:
     def execute_translator_query(self, sql: str) -> Tuple[Any, str]:
         """Execute query through SQL to MongoDB translator"""
         try:
-            cmd = ['./mongosql', '-e', sql]
+            # Use the same database as MariaDB for fair comparison
+            database = os.getenv('MARIADB_DATABASE', 'classicmodels')
+            cmd = ['./mongosql', database, '-e', sql]
             result = subprocess.run(
                 cmd, 
                 capture_output=True, 
@@ -297,18 +299,20 @@ class MariaDBQARunner:
         total_tests = len(self.test_results)
         matches = sum(1 for r in self.test_results if r.is_match)
         timezone_diffs = sum(1 for r in self.test_results if r.is_timezone_diff)
-        errors = sum(1 for r in self.test_results if r.mariadb_error or r.translator_error)
+        system_errors = sum(1 for r in self.test_results if r.mariadb_error or r.translator_error)
+        test_failures = sum(1 for r in self.test_results if not r.is_match and not r.is_timezone_diff and not (r.mariadb_error or r.translator_error))
         
         print("\n" + "=" * 80)
         print("🏆 QA TEST SUMMARY")
         print("=" * 80)
         print(f"Total tests: {total_tests}")
-        print(f"Matches: {matches}")
+        print(f"Passed: {matches}")
+        print(f"Failed: {test_failures}")
+        print(f"System errors: {system_errors}")
         print(f"Timezone differences: {timezone_diffs}")
-        print(f"Errors: {errors}")
         print(f"Success rate: {(matches / total_tests * 100):.1f}%")
         
-        if errors > 0:
+        if test_failures > 0 or system_errors > 0:
             print(f"\n❌ FAILED TESTS:")
             print("-" * 50)
             for result in self.test_results:

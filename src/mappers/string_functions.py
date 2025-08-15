@@ -265,10 +265,21 @@ class StringFunctionMapper:
             raise ValueError("RIGHT function requires exactly 2 arguments")
         
         string_expr, length = args
+        
+        # For RIGHT function, we need to calculate the starting position
+        # MongoDB uses 0-based indexing, so we need: 
+        # start = max(0, string_length - length)
+        # We'll use a simpler approach with $substr
         return {
             '$substr': [
                 string_expr,
-                {'$max': [0, {'$subtract': [{'$strLenCP': string_expr}, length]}]},
+                {
+                    '$cond': {
+                        'if': {'$gte': [{'$strLenCP': string_expr}, length]},
+                        'then': {'$subtract': [{'$strLenCP': string_expr}, length]},
+                        'else': 0
+                    }
+                },
                 length
             ]
         }

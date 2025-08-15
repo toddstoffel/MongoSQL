@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 _mongodb_client = None
 _sql_parser = None
 _sql_translator = None
+_mariadb_formatter = None
 _utils_imported = False
 
 def get_mongodb_client():
@@ -38,6 +39,14 @@ def get_sql_translator():
         from ..translators.sql_to_mql import MongoSQLTranslator
         _sql_translator = MongoSQLTranslator()
     return _sql_translator
+
+def get_mariadb_formatter():
+    """Lazy load MariaDB formatter"""
+    global _mariadb_formatter
+    if _mariadb_formatter is None:
+        from ..formatters.mariadb_formatter import MariaDBFormatter
+        _mariadb_formatter = MariaDBFormatter()
+    return _mariadb_formatter
 
 def ensure_utils_imported():
     """Ensure utils are imported"""
@@ -149,8 +158,22 @@ def print_welcome():
 
 def execute_statement(sql, parser, translator, db_client, vertical_format=False, silent=False, is_execute_mode=False):
     """Execute a single SQL statement"""
+    
+    # Get the MariaDB formatter
+    formatter = get_mariadb_formatter()
+    
+    # Set the formatter mode
+    is_piped_input = silent  # silent mode indicates piped input
+    is_interactive = not is_execute_mode and not is_piped_input
+    formatter.set_mode(
+        is_execute_mode=is_execute_mode,
+        is_piped_input=is_piped_input,
+        is_interactive=is_interactive
+    )
+    
     try:
         # Remove trailing semicolon if present
+        original_sql = sql
         sql = sql.rstrip(';')
         
         # Check for \G terminator (vertical format)
@@ -175,18 +198,13 @@ def execute_statement(sql, parser, translator, db_client, vertical_format=False,
         # Calculate execution time
         execution_time = time.time() - start_time
         
-        # Display result
-        display_result(result, mql_query, vertical_format, execution_time, is_execute_mode, silent, parsed)
+        # Format successful output using the modular formatter
+        if not silent:
+            formatter.format_success_output(result, mql_query, execution_time, parsed, vertical_format)
         
     except Exception as e:
         if not silent:
-            error_msg = str(e)
-            if error_msg.startswith("ERROR"):
-                # Already formatted as MySQL/MariaDB error
-                print(error_msg, file=sys.stderr)
-            else:
-                # Generic error, add ERROR prefix
-                print(f"ERROR: {error_msg}", file=sys.stderr)
+            formatter.format_error_output(str(e), original_sql)
 
 def run_batch_mode(parser, translator, db_client, silent=False):
     """Run in batch mode reading from stdin"""
@@ -355,62 +373,9 @@ def show_databases(db_client):
     except Exception as e:
         print(f"ERROR: {e}")
 
-def display_result(result, mql_query, vertical_format=False, execution_time=0.0, is_execute_mode=False, silent=False, parsed_sql=None):
-    """Display query result in MySQL/MariaDB client style"""
-    
-    # Handle USE database result
-    if mql_query.get('operation') == 'use_database' and isinstance(result, str):
-        if not silent:
-            print(result)
-        return
-    
-    # Handle COUNT results
-    if mql_query.get('operation') == 'count' and isinstance(result, int):
-        # Format COUNT result as a table
-        count_result = [{'COUNT(*)': result}]
-        display_mysql_table(count_result, False, execution_time, is_execute_mode, silent, None, None)
-        return
-    
-    if isinstance(result, list):
-        if result:
-            # Display as MySQL-style table
-            if isinstance(result[0], dict):
-                # Check if this is a SHOW operation
-                is_show_operation = mql_query.get('operation', '').startswith('show_')
-                if vertical_format and not is_show_operation:
-                    display_mysql_vertical(result, execution_time, is_execute_mode, silent)
-                else:
-                    query_columns = parsed_sql.get('columns', []) if parsed_sql else []
-                    table_name = parsed_sql.get('from') if parsed_sql else None
-                    display_mysql_table(result, is_show_operation, execution_time, is_execute_mode, silent, query_columns, table_name)
-            else:
-                for item in result:
-                    print(item)
-        else:
-            if not is_execute_mode and not silent:
-                print(f"Empty set ({execution_time:.2f} sec)")
-                print()
-    else:
-        # Handle non-query results (INSERT, UPDATE, DELETE)
-        if not is_execute_mode:
-            if isinstance(result, dict):
-                if 'inserted_id' in result:
-                    print(f"Query OK, 1 row affected ({execution_time:.2f} sec)")
-                    print()
-                elif 'matched_count' in result:
-                    print(f"Query OK, {result.get('modified_count', 0)} rows affected ({execution_time:.2f} sec)")
-                    if result.get('matched_count', 0) > result.get('modified_count', 0):
-                        print(f"Rows matched: {result['matched_count']}  Changed: {result['modified_count']}  Warnings: 0")
-                    print()
-                elif 'deleted_count' in result:
-                    print(f"Query OK, {result.get('deleted_count', 0)} rows affected ({execution_time:.2f} sec)")
-                    print()
-                else:
-                    print(f"Query OK ({execution_time:.2f} sec)")
-                    print()
-            else:
-                print(f"Query OK ({execution_time:.2f} sec)")
-                print()
+
+if __name__ == '__main__':
+    main()
 
 def display_tab_format(results, query_columns=None):
     """Display results in tab-separated format (for piped output, matches MariaDB)"""
