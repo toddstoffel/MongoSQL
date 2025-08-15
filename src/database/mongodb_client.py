@@ -24,7 +24,7 @@ class MongoDBClient:
     
     def __init__(self, host: str = 'localhost', port: int = 27017, 
                  database: str = None, username: str = None, password: str = None,
-                 retry_writes: str = 'true', write_concern: str = 'majority', app_name: str = 'SQL2MQL'):
+                 retry_writes: str = 'true', write_concern: str = 'majority', app_name: str = 'MongoSQL'):
         # Only initialize once
         if hasattr(self, '_initialized'):
             return

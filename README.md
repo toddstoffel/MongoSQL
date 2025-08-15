@@ -1,4 +1,4 @@
-# SQL2MQL - SQL to MongoDB Query Language Translator
+# MongoSQL - SQL to MongoDB Query Language Translator
 
 A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Language (MQL) and executes queries against MongoDB databases.
 
@@ -36,25 +36,25 @@ cp .env.example .env
 ### Interactive Mode (Default)
 
 ```bash
-python sql2mql.py
+python mongosql.py
 ```
 
 Or with connection parameters:
 
 ```bash
-python sql2mql.py --host localhost --port 27017 --database mydb --username myuser -p
+python mongosql.py --host localhost --port 27017 --database mydb --username myuser -p
 ```
 
 ### Execute Single Statement
 
 ```bash
-python sql2mql.py -e "SELECT * FROM users WHERE age > 25"
+python mongosql.py -e "SELECT * FROM users WHERE age > 25"
 ```
 
 ### Batch Mode
 
 ```bash
-cat queries.sql | python sql2mql.py --batch
+cat queries.sql | python mongosql.py --batch
 ```
 
 ## SQL to MQL Translation Examples

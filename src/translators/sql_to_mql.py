@@ -8,7 +8,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from ..joins.join_translator import JoinTranslator
 
-class SQLToMQLTranslator:
+class MongoSQLTranslator:
     """Translates parsed SQL to MongoDB Query Language"""
     
     def __init__(self):
@@ -731,6 +731,25 @@ class SQLToMQLTranslator:
                             except ValueError:
                                 # Function not supported, fall through to literal
                                 pass
+                    
+                    # Check if this has an alias (e.g., "1 as test", "col_name as alias")
+                    if ' as ' in col_stripped.lower():
+                        # Find the position of the last AS (case-insensitive)
+                        col_lower = col_stripped.lower()
+                        as_pos = col_lower.rfind(' as ')
+                        if as_pos != -1:
+                            expression_part = col_stripped[:as_pos].strip()
+                            alias_part = col_stripped[as_pos + 4:].strip()  # +4 for " as "
+                            
+                            # Try to evaluate the expression part
+                            try:
+                                result = eval(expression_part)  # Simple math expressions like "1"
+                                projection[alias_part] = {'$literal': result}
+                                continue
+                            except:
+                                # If eval fails, treat as literal string
+                                projection[alias_part] = {'$literal': expression_part}
+                                continue
                     
                     # Try to evaluate as expression (like "1+1")
                     try:

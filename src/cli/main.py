@@ -1,5 +1,5 @@
 """
-Main CLI module for sql2mql client
+Main CLI module for mongosql client
 """
 import click
 import os
@@ -35,8 +35,8 @@ def get_sql_translator():
     """Lazy load SQL translator"""
     global _sql_translator
     if _sql_translator is None:
-        from ..translators.sql_to_mql import SQLToMQLTranslator
-        _sql_translator = SQLToMQLTranslator()
+        from ..translators.sql_to_mql import MongoSQLTranslator
+        _sql_translator = MongoSQLTranslator()
     return _sql_translator
 
 def ensure_utils_imported():
@@ -61,12 +61,12 @@ load_dotenv()
 @click.option('--execute', '-e', help='Execute statement and exit')
 @click.option('--batch', is_flag=True, help='Run in batch mode (non-interactive)')
 def main(database, host, port, username, password, execute, batch):
-    """SQL2MQL - A command-line client that translates SQL to MongoDB queries
+    """MongoSQL - A command-line client that translates SQL to MongoDB queries
     
     DATABASE is the name of the database to connect to (optional)
     """
     
-    # Check if input is coming from a pipe (like echo | sql2mql)
+    # Check if input is coming from a pipe (like echo | mongosql)
     is_piped_input = not sys.stdin.isatty()
     
     # Get connection parameters
@@ -138,11 +138,11 @@ def main(database, host, port, username, password, execute, batch):
 
 def print_welcome():
     """Print MariaDB-style welcome message"""
-    print(f"Welcome to the SQL2MQL monitor. Commands end with ; or \\g.")
-    print(f"Your SQL2MQL connection id is 1")
-    print(f"Server version: MongoDB (via sql2mql translator)")
+    print(f"Welcome to the MongoSQL monitor. Commands end with ; or \\g.")
+    print(f"Your MongoSQL connection id is 1")
+    print(f"Server version: MongoDB (via mongosql translator)")
     print(f"")
-    print(f"Copyright (c) 2025, SQL2MQL contributors")
+    print(f"Copyright (c) 2025, MongoSQL contributors")
     print(f"")
     print(f"Type 'help;' or '\\h' for help. Type '\\c' to clear the current input statement.")
     print()
@@ -203,7 +203,7 @@ def run_interactive_mode(parser, translator, db_client):
     readline.parse_and_bind('set editing-mode emacs')
     
     # Set up history file
-    history_file = os.path.expanduser('~/.sql2mql_history')
+    history_file = os.path.expanduser('~/.mongosql_history')
     try:
         readline.read_history_file(history_file)
         # Limit history to 1000 entries
@@ -218,7 +218,7 @@ def run_interactive_mode(parser, translator, db_client):
                 current_db = db_client.database_name or "none"
                 
                 # Get input with MySQL-style prompt showing database
-                sql = input(f"sql2mql [{current_db}]> ")
+                sql = input(f"mongosql [{current_db}]> ")
                 
                 if not sql:
                     continue
@@ -277,13 +277,13 @@ def run_interactive_mode(parser, translator, db_client):
 def show_help():
     """Display help information in MySQL style"""
     print()
-    print("General information about SQL2MQL:")
+    print("General information about MongoSQL:")
     print()
-    print("List of all SQL2MQL commands:")
+    print("List of all MongoSQL commands:")
     print("Note that all text commands must be first on line and end with ';'")
     print()
     print("help    (\\h)    Display this help.")
-    print("quit    (\\q)    Quit sql2mql.")
+    print("quit    (\\q)    Quit mongosql.")
     print("use     \\u      Use another database. Takes database name as argument.")
     print("SHOW TABLES     Show all tables (collections) in current database.")
     print()
@@ -412,11 +412,80 @@ def display_result(result, mql_query, vertical_format=False, execution_time=0.0,
                 print(f"Query OK ({execution_time:.2f} sec)")
                 print()
 
+def display_tab_format(results, query_columns=None):
+    """Display results in tab-separated format (for piped output, matches MariaDB)"""
+    if not results:
+        return
+    
+    # Determine column order - same logic as table format
+    if query_columns and query_columns != ['*']:
+        columns = []
+        for col in query_columns:
+            if isinstance(col, dict):
+                if 'column' in col:
+                    columns.append(col['column'])
+                elif 'function' in col:
+                    if 'original_call' in col:
+                        columns.append(col['original_call'])
+                    else:
+                        func_name = col['function']
+                        args_str = col.get('args_str', '')
+                        if args_str:
+                            columns.append(f"{func_name}({args_str})")
+                        else:
+                            columns.append(func_name)
+            else:
+                # Handle string columns (including aliases like "1 as test")
+                col_str = str(col)
+                
+                # Check if this is an alias expression (e.g., "1 as test")
+                if ' as ' in col_str.lower():
+                    # Extract the alias part (case-insensitive)
+                    col_lower = col_str.lower()
+                    as_pos = col_lower.rfind(' as ')
+                    if as_pos != -1:
+                        alias_part = col_str[as_pos + 4:].strip()  # +4 for " as "
+                        columns.append(alias_part)
+                    else:
+                        columns.append(col_str)
+                else:
+                    columns.append(col_str)
+        columns = [col for col in columns if any(col in doc for doc in results)]
+    else:
+        # Auto-detect columns, prioritize schema order
+        all_columns = set()
+        for doc in results:
+            all_columns.update(doc.keys())
+        columns = list(all_columns)
+    
+    # Print header (column names)
+    print('\t'.join(columns))
+    
+    # Print data rows
+    for doc in results:
+        row_values = []
+        for col in columns:
+            value = doc.get(col, '')
+            # Format value similar to format_value but simpler for tab output
+            if value is None:
+                row_values.append('NULL')
+            else:
+                row_values.append(str(value))
+        print('\t'.join(row_values))
+
 def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is_execute_mode=False, silent=False, query_columns=None, table_name=None):
     """Display results in MySQL/MariaDB table format"""
     ensure_utils_imported()  # Ensure utils are loaded
     
     if not results:
+        return
+    
+    # Check if output should be tab-formatted (for piped input, matches MariaDB behavior)
+    is_piped = silent
+    
+    if is_piped:
+        # Tab-separated format for piped output (matches MariaDB behavior)
+        display_tab_format(results, query_columns)
         return
     
     # If query_columns is provided (from SELECT statement), use that order
@@ -443,10 +512,24 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
                 else:
                     columns.append(str(col))
             else:
-                # Handle qualified column names (table.column -> column)
-                if isinstance(col, str) and '.' in col:
-                    col = col.split('.')[-1]
-                columns.append(col)
+                # Handle string columns (including aliases like "1 as test")
+                col_str = str(col)
+                
+                # Check if this is an alias expression (e.g., "1 as test")
+                if ' as ' in col_str.lower():
+                    # Extract the alias part (case-insensitive)
+                    col_lower = col_str.lower()
+                    as_pos = col_lower.rfind(' as ')
+                    if as_pos != -1:
+                        alias_part = col_str[as_pos + 4:].strip()  # +4 for " as "
+                        columns.append(alias_part)
+                    else:
+                        columns.append(col_str)
+                else:
+                    # Handle qualified column names (table.column -> column)
+                    if isinstance(col, str) and '.' in col:
+                        col = col.split('.')[-1]
+                    columns.append(col_str)
         # Only include columns that actually exist in the results
         columns = [col for col in columns if any(col in doc for doc in results)]
     else:

@@ -1,7 +1,7 @@
 # Reference Links & Resources
 
 **Created:** August 14, 2025  
-**Purpose:** Comprehensive list of external resources used during SQL2MQL development  
+**Purpose:** Comprehensive list of external resources used during MongoSQL development  
 **Maintainer:** SQL to MongoDB Translation Project Team  
 
 ## Primary Documentation Sources

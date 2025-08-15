@@ -145,7 +145,7 @@ class MariaDBQARunner:
     def execute_translator_query(self, sql: str) -> Tuple[Any, str]:
         """Execute query through SQL to MongoDB translator"""
         try:
-            cmd = ['python', 'sql2mql', 'classicmodels', '-e', sql]
+            cmd = ['./mongosql', '-e', sql]
             result = subprocess.run(
                 cmd, 
                 capture_output=True, 

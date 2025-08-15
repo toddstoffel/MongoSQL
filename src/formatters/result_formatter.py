@@ -1,5 +1,5 @@
 """
-Result formatting module for SQL2MQL client
+Result formatting module for MongoSQL client
 Handles proper column ordering and display formatting to match MariaDB/MySQL output
 """
 from typing import List, Dict, Any, Optional

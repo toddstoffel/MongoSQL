@@ -1,5 +1,5 @@
 """
-Utility functions for the SQL2MQL translator
+Utility functions for the MongoSQL translator
 """
 import re
 from typing import Any, Dict, List, Optional, Union

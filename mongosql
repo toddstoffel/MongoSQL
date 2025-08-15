@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SQL2MQL - A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Language
+MongoSQL - A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Language
 """
 
 import sys
