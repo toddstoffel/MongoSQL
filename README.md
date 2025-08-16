@@ -440,7 +440,7 @@ src/
     └── schema.py            # Database schema utilities
 
 QA/
-└── mariadb_comparison_qa.py # Comprehensive test suite (67 tests)
+└── mariadb_comparison_qa.py # Comprehensive test suite (100 tests across 2 phases)
 
 KB/
 ├── MONGODB_FUNCTION_MAPPING.md # Complete function mapping reference
@@ -523,12 +523,33 @@ MongoDB connection and query execution:
 ## Testing Framework
 
 ### Quality Assurance (`QA/`)
-Comprehensive testing achieving 95.5% compatibility:
-- **67 Test Cases** across 10 functional categories
+Comprehensive testing framework achieving 100% core SQL compatibility:
+- **100 Test Cases** across 13 functional categories organized in development phases
+- **Phase 1 Complete**: 69 tests for core SQL features (100% pass rate)
+- **Phase 2 Testing**: 31 tests for modern application extensions (JSON, enhanced strings, advanced aggregates)
 - **Side-by-side Comparison**: MariaDB vs MongoDB result validation
 - **Collation Testing**: Ensures identical sorting behavior
-- **Automated Reporting**: Detailed success/failure analysis
-- **Recent Improvements**: Fixed COALESCE and NULLIF conditional functions
+- **Automated Reporting**: Detailed success/failure analysis with categorized results
+
+#### QA Testing Usage:
+```bash
+# Test all categories
+python QA/mariadb_comparison_qa.py
+
+# Test specific development phase
+python QA/mariadb_comparison_qa.py --phase 1    # Core SQL features
+python QA/mariadb_comparison_qa.py --phase 2    # Modern extensions
+
+# Test specific category
+python QA/mariadb_comparison_qa.py --category datetime
+python QA/mariadb_comparison_qa.py --category json
+
+# Test specific function
+python QA/mariadb_comparison_qa.py --function JSON_EXTRACT
+
+# Verbose output with detailed comparisons
+python QA/mariadb_comparison_qa.py --phase 1 --verbose
+```
 
 ## Error Handling
 

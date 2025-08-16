@@ -30,6 +30,8 @@
 - **NEVER** test submodules directly (parser, translator, etc.) - this defeats the project purpose
 - **USE** `./mongosql database -e "SQL_QUERY"` for all testing and validation
 - **EXAMPLE**: `./mongosql classicmodels -e "SELECT * FROM customers LIMIT 5"`
+- **CLI FLAGS**: Only `-e` (execute query) is available - NO `--debug`, `--verbose`, or other flags
+- **DEBUGGING**: Use `python QA/mariadb_comparison_qa.py --function FUNC_NAME --verbose` for detailed output
 - The CLI provides the complete integration testing that validates the entire pipeline
 - Direct submodule testing can hide integration issues and doesn't reflect real usage
 
@@ -54,10 +56,17 @@
 4. Load environment variables with `load_dotenv()`
 5. Verify MongoDB connection works
 6. **Test through `./mongosql` CLI only - complete integration testing**
-7. Use token-based parsing only (NO REGEX)
-8. Check actual error messages, don't assume
+7. **For detailed debugging**: Use `python QA/mariadb_comparison_qa.py --function FUNC_NAME --verbose`
+8. Use token-based parsing only (NO REGEX)
+9. Check actual error messages, don't assume
 
-### 6. COMMON MISTAKES TO AVOID
+### 6. CLI LIMITATIONS - IMPORTANT
+- **MongoSQL CLI**: Only supports `./mongosql database -e "SQL_QUERY"` format
+- **NO DEBUG FLAGS**: `--debug`, `--verbose`, `--help` are NOT available on `./mongosql`
+- **DEBUGGING**: Use the QA testing framework with `--verbose` for detailed output
+- **TESTING**: Use `python QA/mariadb_comparison_qa.py` for comprehensive testing and debugging
+
+### 7. COMMON MISTAKES TO AVOID
 - ❌ Using regex for SQL parsing (use sqlparse tokens instead)
 - ❌ Using localhost hardcoded values
 - ❌ Not loading .env file
@@ -65,6 +74,7 @@
 - ❌ Assuming MongoDB is running without checking
 - ❌ Not reading the full error message carefully
 - ❌ **TESTING SUBMODULES DIRECTLY INSTEAD OF USING `./mongosql` CLI**
+- ❌ **USING NON-EXISTENT CLI FLAGS** like `--debug`, `--verbose` on `./mongosql`
 
 ### 7. QA TESTING GUIDELINES - CRITICAL
 - **ONLY** test SQL queries that execute successfully in MariaDB

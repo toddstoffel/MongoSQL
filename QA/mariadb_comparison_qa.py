@@ -5,6 +5,12 @@ MariaDB vs SQL to MongoDB Translator - Quality Assurance Test Suite
 This script provides comprehensive side-by-side comparison testing between 
 MariaDB and our SQL to MongoDB translator to ensure functional accuracy.
 
+PHASE 1: Core SQL Features (Complete - 69/69 tests passing)
+    - datetime, string, math, aggregate, joins, groupby, orderby, distinct, conditional, subqueries
+
+PHASE 2: Modern Application Extensions (In Development)
+    - json, extended_string, enhanced_aggregate
+
 Usage:
     python mariadb_comparison_qa.py [options]
     
@@ -21,7 +27,7 @@ Requirements:
     - Working SQL to MongoDB translator
 
 Author: SQL to MongoDB Translation Project Team
-Date: August 14, 2025
+Date: August 15, 2025 (Phase 2 QA Tests Added)
 """
 
 import sys
@@ -100,6 +106,7 @@ class MariaDBQARunner:
         
         # Predefined test suites by category - EXPANDED COVERAGE
         self.test_suites = {
+            # Phase 1: Core SQL Features (Complete)
             'datetime': self._get_datetime_tests(),
             'string': self._get_string_tests(),
             'math': self._get_math_tests(),
@@ -109,7 +116,12 @@ class MariaDBQARunner:
             'orderby': self._get_orderby_tests(),
             'distinct': self._get_distinct_tests(),
             'conditional': self._get_conditional_tests(),
-            'subqueries': self._get_subquery_tests()
+            'subqueries': self._get_subquery_tests(),
+            
+            # Phase 2: Modern Application Extensions
+            'json': self._get_json_tests(),
+            'extended_string': self._get_extended_string_tests(),
+            'enhanced_aggregate': self._get_enhanced_aggregate_tests()
         }
         
     def connect_to_mariadb(self) -> bool:
@@ -511,31 +523,126 @@ class MariaDBQARunner:
             ("SELECT c.customerName, o.total_orders FROM customers c, (SELECT customerNumber, COUNT(*) as total_orders FROM orders GROUP BY customerNumber) o WHERE c.customerNumber = o.customerNumber LIMIT 5", "SUBQUERY_DERIVED"),
         ]
 
+    # PHASE 2: MODERN APPLICATION EXTENSIONS
+    
+    def _get_json_tests(self) -> List[Tuple[str, str]]:
+        """Get JSON function test cases for Phase 2"""
+        return [
+            # Basic JSON_EXTRACT functionality
+            ("SELECT JSON_EXTRACT('{\"name\": \"John\", \"age\": 30}', '$.name')", "JSON_EXTRACT"),
+            ("SELECT JSON_EXTRACT('[1, 2, 3, 4, 5]', '$[2]')", "JSON_EXTRACT_ARRAY"),
+            
+            # JSON_OBJECT creation
+            ("SELECT JSON_OBJECT('name', 'Alice', 'age', 25)", "JSON_OBJECT"),
+            ("SELECT JSON_OBJECT('customer', customerName, 'credit', creditLimit) FROM customers LIMIT 1", "JSON_OBJECT_FROM_TABLE"),
+            
+            # JSON_ARRAY creation  
+            ("SELECT JSON_ARRAY(1, 2, 'three', 4.5)", "JSON_ARRAY"),
+            ("SELECT JSON_ARRAY(customerName, country) FROM customers LIMIT 1", "JSON_ARRAY_FROM_TABLE"),
+            
+            # JSON utility functions
+            ("SELECT JSON_UNQUOTE('\"Hello World\"')", "JSON_UNQUOTE"),
+            ("SELECT JSON_KEYS('{\"name\": \"John\", \"age\": 30, \"city\": \"NYC\"}')", "JSON_KEYS"),
+            ("SELECT JSON_LENGTH('[1, 2, 3, 4, 5]')", "JSON_LENGTH_ARRAY"),
+            ("SELECT JSON_LENGTH('{\"a\": 1, \"b\": 2, \"c\": 3}')", "JSON_LENGTH_OBJECT"),
+        ]
+    
+    def _get_extended_string_tests(self) -> List[Tuple[str, str]]:
+        """Get extended string function test cases for Phase 2"""
+        return [
+            # Advanced concatenation
+            ("SELECT CONCAT_WS('-', 'Alpha', 'Beta', 'Gamma')", "CONCAT_WS"),
+            ("SELECT CONCAT_WS(', ', customerName, city, country) FROM customers LIMIT 1", "CONCAT_WS_TABLE"),
+            
+            # Regular expressions
+            ("SELECT customerName FROM customers WHERE customerName REGEXP '^A.*' LIMIT 3", "REGEXP_BASIC"),
+            ("SELECT REGEXP_SUBSTR('Hello World 123', '[0-9]+')", "REGEXP_SUBSTR"),
+            
+            # Number formatting
+            ("SELECT FORMAT(1234567.89, 2)", "FORMAT_NUMBER"),
+            ("SELECT FORMAT(creditLimit, 0) FROM customers LIMIT 1", "FORMAT_FROM_TABLE"),
+            
+            # Phonetic and distance functions
+            ("SELECT SOUNDEX('Smith')", "SOUNDEX"),
+            ("SELECT SOUNDEX(customerName) FROM customers WHERE customerName LIKE 'A%' LIMIT 1", "SOUNDEX_TABLE"),
+            
+            # Encoding functions
+            ("SELECT HEX('Hello')", "HEX_ENCODE"),
+            ("SELECT UNHEX('48656C6C6F')", "HEX_DECODE"),
+            ("SELECT BIN(42)", "BINARY_REPRESENTATION"),
+        ]
+    
+    def _get_enhanced_aggregate_tests(self) -> List[Tuple[str, str]]:
+        """Get enhanced aggregate function test cases for Phase 2"""
+        return [
+            # GROUP_CONCAT functionality
+            ("SELECT GROUP_CONCAT(customerName) FROM customers WHERE country = 'USA' LIMIT 1", "GROUP_CONCAT_BASIC"),
+            ("SELECT country, GROUP_CONCAT(customerName SEPARATOR '; ') FROM customers GROUP BY country LIMIT 3", "GROUP_CONCAT_SEPARATOR"),
+            ("SELECT GROUP_CONCAT(DISTINCT country ORDER BY country) FROM customers", "GROUP_CONCAT_DISTINCT"),
+            
+            # Statistical aggregates
+            ("SELECT STDDEV_POP(creditLimit) FROM customers WHERE creditLimit IS NOT NULL", "STDDEV_POPULATION"),
+            ("SELECT STDDEV_SAMP(creditLimit) FROM customers WHERE creditLimit IS NOT NULL", "STDDEV_SAMPLE"),
+            ("SELECT VAR_POP(creditLimit) FROM customers WHERE creditLimit IS NOT NULL", "VARIANCE_POPULATION"),
+            ("SELECT VAR_SAMP(creditLimit) FROM customers WHERE creditLimit IS NOT NULL", "VARIANCE_SAMPLE"),
+            
+            # Bitwise aggregates
+            ("SELECT BIT_AND(customerNumber) FROM customers LIMIT 10", "BIT_AND"),
+            ("SELECT BIT_OR(customerNumber) FROM customers LIMIT 10", "BIT_OR"),
+            ("SELECT BIT_XOR(customerNumber) FROM customers LIMIT 10", "BIT_XOR"),
+        ]
+
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='MariaDB vs MongoDB Translator QA Test Suite')
     parser.add_argument('--category', 
-                        help='Test category to run (case insensitive): datetime, string, math, aggregate, joins, groupby, orderby, distinct, conditional, subqueries, all')
-    parser.add_argument('--function', help='Test specific function only')
+                        help='Test category to run (case insensitive): datetime, string, math, aggregate, joins, groupby, orderby, distinct, conditional, subqueries, json, extended_string, enhanced_aggregate, all. Cannot be used with --phase.')
+    parser.add_argument('--phase', type=int, choices=[1, 2], 
+                        help='Test all categories for a specific phase: 1 (Core SQL Features) or 2 (Modern Application Extensions). Cannot be used with --category or --function.')
+    parser.add_argument('--function', help='Test specific function only. Cannot be used with --phase.')
     parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed output')
     parser.add_argument('--export-results', action='store_true', help='Export results to CSV')
     parser.add_argument('--timeout', type=int, default=5, help='Timeout for each test in seconds')
     
     args = parser.parse_args()
     
-    # Set default category if not provided
-    if not args.category:
+    # Set default category if not provided and no phase specified
+    if not args.category and not args.phase:
         args.category = 'all'
     
-    # Convert category to lowercase for case-insensitive matching
-    args.category = args.category.lower()
+    # Handle phase argument
+    phase_categories = {
+        1: ['datetime', 'string', 'math', 'aggregate', 'joins', 'groupby', 'orderby', 'distinct', 'conditional', 'subqueries'],
+        2: ['json', 'extended_string', 'enhanced_aggregate']
+    }
     
-    # Validate category
-    valid_categories = ['datetime', 'string', 'math', 'aggregate', 'joins', 'groupby', 'orderby', 'distinct', 'conditional', 'subqueries', 'all']
-    if args.category not in valid_categories:
-        print(f"❌ Invalid category: {args.category}")
-        print(f"Valid categories: {', '.join(valid_categories)}")
+    # Convert category to lowercase for case-insensitive matching if provided
+    if args.category:
+        args.category = args.category.lower()
+    
+    # Validate arguments
+    if args.phase and args.category:
+        print("❌ Cannot specify both --phase and --category arguments")
         sys.exit(1)
+        
+    if args.phase and args.function:
+        print("❌ Cannot specify both --phase and --function arguments")
+        sys.exit(1)
+    
+    # Validate category if provided
+    if args.category:
+        valid_categories = [
+            # Phase 1: Core SQL Features
+            'datetime', 'string', 'math', 'aggregate', 'joins', 'groupby', 'orderby', 'distinct', 'conditional', 'subqueries',
+            # Phase 2: Modern Application Extensions  
+            'json', 'extended_string', 'enhanced_aggregate',
+            # Special
+            'all'
+        ]
+        if args.category not in valid_categories:
+            print(f"❌ Invalid category: {args.category}")
+            print(f"Valid categories: {', '.join(valid_categories)}")
+            sys.exit(1)
     
     # Initialize QA runner
     qa_runner = MariaDBQARunner(verbose=args.verbose, timeout=args.timeout)
@@ -561,6 +668,19 @@ def main():
             if not function_found:
                 print(f"❌ Function '{args.function}' not found in test suites")
                 
+        elif args.phase:
+            # Run all categories for the specified phase
+            categories_to_run = phase_categories[args.phase]
+            print(f"🚀 Running Phase {args.phase} tests:")
+            print(f"   Categories: {', '.join(categories_to_run)}")
+            print()
+            
+            for category in categories_to_run:
+                if category in qa_runner.test_suites:
+                    qa_runner.run_test_suite(category)
+                else:
+                    print(f"⚠️  Category '{category}' not found in test suites")
+                    
         elif args.category == 'all':
             qa_runner.run_all_tests()
         else:
