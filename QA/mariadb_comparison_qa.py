@@ -142,9 +142,17 @@ class MariaDBQARunner:
         try:
             cursor = self.connection.cursor()
             cursor.execute(sql)
-            result = cursor.fetchone()
+            
+            # Fetch all results to avoid "Unread result found" errors
+            results = cursor.fetchall()
             cursor.close()
-            return result[0] if result else None, None
+            
+            # Return first row's first column if results exist, otherwise None
+            if results and len(results) > 0 and len(results[0]) > 0:
+                return results[0][0], None
+            else:
+                return None, None
+                
         except Exception as e:
             return None, str(e)
             
@@ -273,12 +281,14 @@ class MariaDBQARunner:
             
     def run_test_suite(self, category: str) -> List[QATestResult]:
         """Run all tests in a category"""
-        if category not in self.test_suites:
+        # Make category lookup case-insensitive
+        category_lower = category.lower()
+        if category_lower not in self.test_suites:
             print(f"❌ Unknown test category: {category}")
             return []
             
-        tests = self.test_suites[category]
-        print(f"\n🚀 Running {category.upper()} function tests ({len(tests)} tests)")
+        tests = self.test_suites[category_lower]
+        print(f"\n🚀 Running {category_lower.upper()} function tests ({len(tests)} tests)")
         print("=" * 80)
         
         category_results = []
@@ -286,7 +296,7 @@ class MariaDBQARunner:
             # Show progress
             print(f"[{i:2d}/{len(tests)}] Testing {function_name}...", end=" ", flush=True)
             
-            result = self.run_single_test(sql, category, function_name)
+            result = self.run_single_test(sql, category_lower, function_name)
             
             # Show immediate result
             if result.is_timezone_diff:
@@ -492,24 +502,40 @@ class MariaDBQARunner:
         ]
     
     def _get_subquery_tests(self) -> List[Tuple[str, str]]:
-        """Get subquery test cases"""
+        """Get subquery test cases - all 5 MariaDB subquery types"""
         return [
-            ("SELECT customerName FROM customers WHERE customerNumber = (SELECT customerNumber FROM orders ORDER BY orderDate DESC LIMIT 1)", "SUBQUERY_WHERE"),
-            ("SELECT customerName FROM customers WHERE customerNumber IN (SELECT customerNumber FROM orders LIMIT 3)", "SUBQUERY_IN"),
-            ("SELECT customerName FROM customers WHERE EXISTS (SELECT 1 FROM orders WHERE orders.customerNumber = customers.customerNumber) LIMIT 1", "SUBQUERY_EXISTS"),
+            ("SELECT customerName FROM customers WHERE customerNumber = (SELECT customerNumber FROM orders ORDER BY orderDate DESC LIMIT 1)", "SUBQUERY_SCALAR"),
+            ("SELECT customerName FROM customers WHERE customerNumber IN (SELECT customerNumber FROM orders WHERE orderDate > '2004-01-01')", "SUBQUERY_TABLE"),
+            ("SELECT customerName FROM customers WHERE EXISTS (SELECT 1 FROM orders WHERE orders.customerNumber = customers.customerNumber) LIMIT 1", "SUBQUERY_CORRELATED"),
+            ("SELECT customerName FROM customers WHERE (customerNumber, country) = (SELECT customerNumber, country FROM customers WHERE customerName = 'Atelier graphique')", "SUBQUERY_ROW"),
+            ("SELECT c.customerName, o.total_orders FROM customers c, (SELECT customerNumber, COUNT(*) as total_orders FROM orders GROUP BY customerNumber) o WHERE c.customerNumber = o.customerNumber LIMIT 5", "SUBQUERY_DERIVED"),
         ]
 
 def main():
     """Main entry point"""
     parser = argparse.ArgumentParser(description='MariaDB vs MongoDB Translator QA Test Suite')
-    parser.add_argument('--category', choices=['datetime', 'string', 'math', 'aggregate', 'joins', 'groupby', 'orderby', 'distinct', 'conditional', 'subqueries', 'all'], 
-                        default='all', help='Test category to run')
+    parser.add_argument('--category', 
+                        help='Test category to run (case insensitive): datetime, string, math, aggregate, joins, groupby, orderby, distinct, conditional, subqueries, all')
     parser.add_argument('--function', help='Test specific function only')
     parser.add_argument('--verbose', '-v', action='store_true', help='Show detailed output')
     parser.add_argument('--export-results', action='store_true', help='Export results to CSV')
     parser.add_argument('--timeout', type=int, default=5, help='Timeout for each test in seconds')
     
     args = parser.parse_args()
+    
+    # Set default category if not provided
+    if not args.category:
+        args.category = 'all'
+    
+    # Convert category to lowercase for case-insensitive matching
+    args.category = args.category.lower()
+    
+    # Validate category
+    valid_categories = ['datetime', 'string', 'math', 'aggregate', 'joins', 'groupby', 'orderby', 'distinct', 'conditional', 'subqueries', 'all']
+    if args.category not in valid_categories:
+        print(f"❌ Invalid category: {args.category}")
+        print(f"Valid categories: {', '.join(valid_categories)}")
+        sys.exit(1)
     
     # Initialize QA runner
     qa_runner = MariaDBQARunner(verbose=args.verbose, timeout=args.timeout)

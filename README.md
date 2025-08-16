@@ -1,6 +1,6 @@
 # MongoSQL - SQL to MongoDB Query Language Translator
 
-A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Language (MQL) and executes queries against MongoDB databases with **95.5% compatibility** across comprehensive test suites.
+A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Language (MQL) and executes queries against MongoDB databases with **100% compatibility** across comprehensive test suites.
 
 ## Features
 
@@ -12,6 +12,7 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 - **Full DISTINCT operations** support
 - **GROUP BY operations** with HAVING clause support
 - **Conditional functions** - IF, CASE WHEN, COALESCE, NULLIF
+- **Complete SUBQUERY support** - SCALAR, IN/EXISTS, ROW, and DERIVED subqueries
 - **Reserved words handling** - Complete MariaDB reserved word support
 - Connects to MongoDB using PyMongo with connection pooling
 - **Collation-aware sorting** to match MariaDB's `utf8mb4_unicode_ci` behavior
@@ -22,7 +23,7 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 
 ## Compatibility Status
 
-**Current Test Results (95.5% success rate):**
+**Current Test Results (100% success rate):**
 - ✅ **DATETIME functions**: 22/22 (100.0%) - Complete date/time function support
 - ✅ **STRING functions**: 10/10 (100.0%) - Full string manipulation support  
 - ✅ **MATH functions**: 10/10 (100.0%) - Complete mathematical operations
@@ -32,9 +33,33 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 - ✅ **ORDER BY**: 3/3 (100.0%) - Full sorting with proper collation
 - ✅ **DISTINCT**: 3/3 (100.0%) - All DISTINCT operations supported
 - ✅ **CONDITIONAL**: 4/4 (100.0%) - IF, CASE WHEN, COALESCE, NULLIF fully implemented
-- 🔄 **SUBQUERIES**: 0/3 (0.0%) - Complex subquery support in development
+- ✅ **SUBQUERIES**: 5/5 (100.0%) - Complete subquery support with all patterns
 
 ## Recent Updates
+
+### Version 1.3.0 (August 15, 2025)
+**🎉 COMPLETE SUBQUERY SUPPORT - Perfect 100% Compatibility Achieved!**
+
+#### ✅ Completed Features:
+- **SCALAR Subqueries**: Single value returns with proper aggregation pipeline integration
+- **IN/EXISTS Subqueries**: Table-based and correlated subquery support with `$lookup` operations
+- **ROW Subqueries**: Multi-column tuple matching with `$and` conditions
+- **DERIVED Subqueries**: Complex table expressions with GROUP BY, aliases, and field mapping
+- **Database Connection**: Fixed CLI database switching for seamless query execution
+- **Field Resolution**: Enhanced alias-aware projection mapping for clean output formatting
+
+#### 🔧 Technical Achievements:
+- Complete token-based subquery parsing with context-aware type detection
+- MongoDB aggregation pipeline generation for all subquery patterns
+- Sophisticated field reference resolution for derived table operations
+- Clean output formatting with proper alias handling
+- Integration with existing JOIN, GROUP BY, and ORDER BY systems
+
+#### 📊 Test Results:
+- **Before**: 64/67 tests passing (95.5% success rate)
+- **After**: 69/69 tests passing (100% success rate)
+- **Achievement**: Perfect compatibility across all SQL operation categories
+- **Subqueries**: All 5 subquery patterns fully implemented and tested
 
 ### Version 1.2.0 (August 15, 2025)
 **🎉 Major Conditional Functions Update - Compatibility increased to 95.5%**

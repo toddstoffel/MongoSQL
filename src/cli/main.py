@@ -106,6 +106,10 @@ def main(database, host, port, username, password, execute, batch):
         # Connect to MongoDB (without requiring a database)
         db_client.connect()
         
+        # If a database was specified, switch to it
+        if mongo_db:
+            db_client.switch_database(mongo_db)
+        
         if execute:
             # Execute single statement and exit
             execute_statement(execute, sql_parser, translator, db_client, silent=False, is_execute_mode=True)

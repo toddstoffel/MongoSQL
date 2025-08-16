@@ -9,6 +9,8 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from ..modules.joins.join_translator import JoinTranslator
 from ..modules.orderby import OrderByParser, OrderByTranslator
 from ..modules.groupby import GroupByParser, GroupByTranslator
+from ..modules.subqueries import SubqueryTranslator
+from ..modules.subqueries.subquery_types import SubqueryType
 
 class MongoSQLTranslator:
     """Translates parsed SQL to MongoDB Query Language"""
@@ -20,6 +22,7 @@ class MongoSQLTranslator:
         self.orderby_translator = OrderByTranslator()
         self.groupby_parser = GroupByParser()
         self.groupby_translator = GroupByTranslator()
+        self.subquery_translator = SubqueryTranslator()
     
     def _is_aggregate_function(self, function_name: str) -> bool:
         """Check if a function is an aggregate function using the function mapper"""
@@ -91,6 +94,10 @@ class MongoSQLTranslator:
             aggregate_result = self._handle_aggregate_functions(parsed_sql)
             if aggregate_result:
                 return aggregate_result
+        
+        # Check for subqueries - they require aggregation pipeline
+        if parsed_sql.get('subqueries'):
+            return self._handle_subquery_select(parsed_sql)
         
         mql = {
             'operation': 'find',
@@ -358,6 +365,27 @@ class MongoSQLTranslator:
         
         if not field or not operator:
             return {}
+        
+        # Skip conditions that involve subqueries - they will be handled by subquery translator
+        if value and isinstance(value, str) and value.strip().startswith('(SELECT'):
+            return {}  # Return empty filter, let subquery translator handle this
+        
+        # Skip EXISTS subqueries - they will be handled by subquery translator
+        if field and isinstance(field, str) and field.strip().startswith('EXISTS'):
+            return {}  # Return empty filter, let subquery translator handle this
+        
+        # Skip IN conditions that contain subquery strings in array
+        if value and isinstance(value, list):
+            for item in value:
+                if isinstance(item, str) and ('SELECT' in item.upper() or '(SELECT' in item):
+                    return {}  # Return empty filter, let subquery translator handle this
+            
+        # Also skip IN conditions with arrays that contain subqueries
+        if operator and operator.upper() == 'IN' and value and isinstance(value, list):
+            # Check if any value in the IN list is a subquery
+            for v in value:
+                if isinstance(v, str) and v.strip().startswith('(SELECT'):
+                    return {}  # Skip this condition
         
         return self._translate_single_condition(field, operator, value)
     
@@ -949,6 +977,14 @@ class MongoSQLTranslator:
             if match_filter:
                 pipeline.append({'$match': match_filter})
         
+        # Add subquery stages if subqueries exist
+        if parsed_sql.get('subqueries'):
+            subquery_stages = self.subquery_translator.translate_subqueries_to_pipeline(
+                parsed_sql['subqueries'], 
+                parsed_sql.get('from', '')
+            )
+            pipeline.extend(subquery_stages)
+        
         # Add limit stage if LIMIT exists (before project to improve performance)
         if parsed_sql.get('limit'):
             limit_info = parsed_sql['limit']
@@ -1307,3 +1343,73 @@ class MongoSQLTranslator:
         
         # Return as literal string
         return value
+    
+    def _handle_subquery_select(self, parsed_sql: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle SELECT queries with subqueries using aggregation pipeline"""
+        pipeline = []
+        
+        # Add match stage if WHERE clause exists
+        if parsed_sql.get('where'):
+            match_filter = self._translate_where(parsed_sql['where'])
+            if match_filter:
+                pipeline.append({'$match': match_filter})
+        
+        # Add subquery stages
+        subquery_stages = self.subquery_translator.translate_subqueries_to_pipeline(
+            parsed_sql['subqueries'], 
+            parsed_sql.get('from', '')
+        )
+        pipeline.extend(subquery_stages)
+        
+        # Build projection stage for selected columns
+        projection_stage = {}
+        
+        # Check if we have DERIVED subqueries that affect field mapping
+        has_derived_subquery = any(
+            subq.subquery_type == SubqueryType.DERIVED
+            for subq in parsed_sql.get('subqueries', [])
+        )
+        
+        for col in parsed_sql['columns']:
+            if col == '*':
+                # Select all fields - don't add specific projection
+                projection_stage = {}
+                break
+            elif isinstance(col, str):
+                if has_derived_subquery and '.' in col:
+                    # Handle aliased column references for DERIVED subqueries
+                    # e.g., "c.customerName" -> "customerName", "o.total_orders" -> "total_orders"
+                    alias, field = col.split('.', 1)
+                    if alias == 'c':
+                        # Main table alias - map to root field with clean name
+                        projection_stage[field] = f"${field}"
+                    elif alias == 'o':
+                        # Derived table alias - map to derived_orders field with clean name
+                        projection_stage[field] = f"$derived_orders.{field}"
+                    else:
+                        # Unknown alias - use field name as-is
+                        projection_stage[field] = f"${col}"
+                else:
+                    # Normal column mapping
+                    projection_stage[col] = f"${col}"
+            elif isinstance(col, dict) and 'column' in col:
+                col_name = col['column']
+                projection_stage[col_name] = f"${col_name}"
+        
+        # Add projection stage if we have specific columns
+        if projection_stage:
+            pipeline.append({'$project': projection_stage})
+        
+        # Add limit stage if LIMIT exists
+        if parsed_sql.get('limit'):
+            limit_info = parsed_sql['limit']
+            if 'offset' in limit_info:
+                pipeline.append({'$skip': limit_info['offset']})
+            if 'count' in limit_info:
+                pipeline.append({'$limit': limit_info['count']})
+        
+        return {
+            'operation': 'aggregate',
+            'collection': parsed_sql.get('from'),
+            'pipeline': pipeline
+        }

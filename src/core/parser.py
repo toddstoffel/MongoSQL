@@ -12,6 +12,7 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from ..modules.joins.join_parser import JoinParser
 from ..modules.joins.join_types import JoinOperation, JoinCondition, JoinType
+from ..modules.subqueries import SubqueryParser
 
 class TokenBasedSQLParser:
     """Parser for SQL statements using proper token-based parsing"""
@@ -19,6 +20,7 @@ class TokenBasedSQLParser:
     def __init__(self):
         """Initialize the token-based SQL parser"""
         self.where_parser = WhereParser()
+        self.subquery_parser = SubqueryParser()
     
     def parse(self, sql: str) -> Dict[str, Any]:
         """Parse SQL statement and return structured data"""
@@ -72,10 +74,17 @@ class TokenBasedSQLParser:
             'limit': None,
             'offset': None,
             'joins': [],
-            'distinct': False
+            'distinct': False,
+            'subqueries': []
         }
         
         tokens = list(parsed.flatten())
+        
+        # Parse subqueries FIRST before other clauses process them as literals
+        original_sql = str(parsed)
+        if self.subquery_parser.has_subqueries(original_sql):
+            result['subqueries'] = self.subquery_parser.extract_subqueries(original_sql)
+        
         i = 0
         
         while i < len(tokens):
