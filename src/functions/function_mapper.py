@@ -9,6 +9,7 @@ from .math_functions import MathFunctionMapper
 from .datetime_functions import DateTimeFunctionMapper
 from ..modules.conditional.conditional_function_mapper import ConditionalFunctionMapper
 from ..modules.json.json_function_mapper import JSONFunctionMapper
+from ..modules.extended_string.extended_string_function_mapper import ExtendedStringFunctionMapper
 
 class FunctionMapper:
     """Master mapper that delegates to specialized function mappers"""
@@ -34,6 +35,7 @@ class FunctionMapper:
         self.datetime_mapper = DateTimeFunctionMapper()
         self.conditional_mapper = ConditionalFunctionMapper()
         self.json_mapper = JSONFunctionMapper()
+        self.extended_string_mapper = ExtendedStringFunctionMapper()
         
         # Cache for function categorization
         self._function_categories = self._build_function_categories()
@@ -67,6 +69,10 @@ class FunctionMapper:
         # JSON functions
         for func in self.json_mapper.get_supported_functions():
             categories[func.upper()] = 'json'
+        
+        # Extended string functions
+        for func in self.extended_string_mapper.get_supported_functions():
+            categories[func.upper()] = 'extended_string'
         
         return categories
     
@@ -104,6 +110,9 @@ class FunctionMapper:
             elif category == 'json':
                 return self.json_mapper.map_json_function(function_name, args)
             
+            elif category == 'extended_string':
+                return self.extended_string_mapper.map_extended_string_function(function_name, args)
+            
             else:
                 raise ValueError(f"Unknown function category: {category}")
                 
@@ -138,6 +147,10 @@ class FunctionMapper:
         """Check if function is a JSON function"""
         return self.json_mapper.is_json_function(function_name)
     
+    def is_extended_string_function(self, function_name: str) -> bool:
+        """Check if function is an extended string function"""
+        return self.extended_string_mapper.is_extended_string_function(function_name)
+    
     def get_all_supported_functions(self) -> Dict[str, List[str]]:
         """Get all supported functions organized by category"""
         return {
@@ -146,7 +159,8 @@ class FunctionMapper:
             'math': self.math_mapper.get_supported_functions(),
             'datetime': list(self.datetime_mapper.function_map.keys()),
             'conditional': self.conditional_mapper.get_supported_functions(),
-            'json': self.json_mapper.get_supported_functions()
+            'json': self.json_mapper.get_supported_functions(),
+            'extended_string': self.extended_string_mapper.get_supported_functions()
         }
     
     def get_function_info(self, function_name: str) -> Dict[str, Any]:

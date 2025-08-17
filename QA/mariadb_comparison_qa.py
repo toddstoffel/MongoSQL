@@ -161,7 +161,15 @@ class MariaDBQARunner:
             
             # Return first row's first column if results exist, otherwise None
             if results and len(results) > 0 and len(results[0]) > 0:
-                return results[0][0], None
+                result = results[0][0]
+                # Convert bytes objects to decoded strings for proper comparison
+                if isinstance(result, bytes):
+                    try:
+                        result = result.decode('utf-8')
+                    except UnicodeDecodeError:
+                        # If decode fails, keep as string representation
+                        result = str(result)
+                return result, None
             else:
                 return None, None
                 

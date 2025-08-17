@@ -737,15 +737,24 @@ class MongoSQLTranslator:
                             quote_char = None
                             paren_depth = 0
                             
-                            for char in args_str:
+                            i = 0
+                            while i < len(args_str):
+                                char = args_str[i]
                                 if char in ("'", '"') and not in_quotes:
                                     in_quotes = True
                                     quote_char = char
                                     current_arg += char
                                 elif char == quote_char and in_quotes:
-                                    in_quotes = False
-                                    quote_char = None
-                                    current_arg += char
+                                    # Check for escaped quotes
+                                    if i + 1 < len(args_str) and args_str[i + 1] == quote_char:
+                                        # Escaped quote, add both characters
+                                        current_arg += char + char
+                                        i += 1  # Skip next character
+                                    else:
+                                        # End of quoted string
+                                        in_quotes = False
+                                        quote_char = None
+                                        current_arg += char
                                 elif char == '(' and not in_quotes:
                                     paren_depth += 1
                                     current_arg += char
@@ -753,11 +762,12 @@ class MongoSQLTranslator:
                                     paren_depth -= 1
                                     current_arg += char
                                 elif char == ',' and not in_quotes and paren_depth == 0:
-                                    # Only split on commas at the top level (not inside parentheses)
+                                    # Only split on commas at the top level (not inside quotes or parentheses)
                                     args.append(current_arg.strip())
                                     current_arg = ""
                                 else:
                                     current_arg += char
+                                i += 1
                             
                             # Add the last argument
                             if current_arg.strip():

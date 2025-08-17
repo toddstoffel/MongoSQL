@@ -119,8 +119,8 @@ class MongoDBClient:
     
     def close(self):
         """Close the MongoDB connection"""
-        if self.client:
-            self.client.close()
+        if self._client:
+            self._client.close()
     
     def field_exists(self, collection_name: str, field_name: str) -> bool:
         """Check if a field exists in the collection"""
