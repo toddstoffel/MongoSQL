@@ -19,6 +19,15 @@
 - **SUCCESS EXAMPLE**: DERIVED subqueries → complex `$lookup` with `$group` subpipelines + `$unwind` + `$project`
 - The client translates SQL syntax to MongoDB syntax - MongoDB does all the work
 
+### 0.6. MODULAR ARCHITECTURE - CRITICAL
+- **MODULES MUST WORK TOGETHER** - Never build modules in isolation that only handle simple cases
+- **EXPECT ALL SQL CONSTRUCTS** - Every module must handle ORDER BY, WHERE, LIMIT, GROUP BY, HAVING, etc.
+- **NO CORE MODULE MODIFICATIONS** - Never modify `src/core/translator.py`, `src/core/parser.py` for new features
+- **BACKWARDS COMPATIBILITY** - New functionality must not break existing Phase 1 functionality
+- **COMPREHENSIVE DESIGN** - JOIN must work with ORDER BY, WHERE with subqueries, functions with aggregation
+- **EXTENSION ONLY** - Add new functionality through modules/plugins, never by changing core code
+- **INTEGRATION TESTING** - Test complex combinations of SQL constructs, not just isolated features
+
 ### 1. NO REGEX PARSING - USE TOKENS ONLY
 - **NEVER** use regex (`import re`, `re.match`, `re.search`, etc.) for SQL parsing
 - **ALWAYS** use sqlparse tokens for all SQL parsing operations
@@ -75,6 +84,8 @@
 - ❌ Not reading the full error message carefully
 - ❌ **TESTING SUBMODULES DIRECTLY INSTEAD OF USING `./mongosql` CLI**
 - ❌ **USING NON-EXISTENT CLI FLAGS** like `--debug`, `--verbose` on `./mongosql`
+- ❌ **BUILDING MODULES IN ISOLATION** - Every module must handle all SQL constructs (ORDER BY, WHERE, LIMIT, etc.)
+- ❌ **MODIFYING CORE MODULES** - Never change `src/core/translator.py` or `src/core/parser.py` for new features
 
 ### 7. QA TESTING GUIDELINES - CRITICAL
 - **ONLY** test SQL queries that execute successfully in MariaDB
