@@ -610,6 +610,12 @@ class MongoSQLTranslator:
                 return self._translate_count_aggregate(parsed_sql, func_arg)
             elif func_name in ['MAX', 'MIN', 'SUM', 'AVG']:
                 return self._translate_math_aggregate(parsed_sql, func_name, func_arg)
+            elif func_name == 'GROUP_CONCAT':
+                return self._translate_group_concat_aggregate(parsed_sql, func_arg)
+            elif func_name in ['STDDEV_POP', 'STDDEV_SAMP', 'VAR_POP', 'VAR_SAMP']:
+                return self._translate_statistical_aggregate(parsed_sql, func_name, func_arg)
+            elif func_name in ['BIT_AND', 'BIT_OR', 'BIT_XOR']:
+                return self._translate_bitwise_aggregate(parsed_sql, func_name, func_arg)
         
         # If we have aggregate functions with regular columns but no GROUP BY,
         # this might be an invalid query, but let's try GROUP BY aggregation anyway
@@ -705,6 +711,190 @@ class MongoSQLTranslator:
             'pipeline': pipeline
         }
     
+    def _translate_group_concat_aggregate(self, parsed_sql: Dict[str, Any], field: str) -> Dict[str, Any]:
+        """Translate GROUP_CONCAT to MongoDB aggregation pipeline"""
+        if field == '*':
+            raise Exception("GROUP_CONCAT requires a specific field, not *")
+        
+        # Build aggregation pipeline
+        pipeline = []
+        
+        # Add match stage if WHERE clause exists
+        if parsed_sql.get('where'):
+            match_filter = self._translate_where(parsed_sql['where'])
+            if match_filter:
+                pipeline.append({'$match': match_filter})
+        
+        # Group all documents and push field values into array
+        group_stage = {
+            '$group': {
+                '_id': None,  # Group all documents together
+                'concat_result': {'$push': f'${field}'}
+            }
+        }
+        pipeline.append(group_stage)
+        
+        # Convert array to comma-separated string
+        pipeline.append({
+            '$project': {
+                '_id': 0,
+                f'GROUP_CONCAT({field})': {
+                    '$reduce': {
+                        'input': '$concat_result',
+                        'initialValue': '',
+                        'in': {
+                            '$cond': [
+                                {'$eq': ['$$value', '']},
+                                '$$this',
+                                {'$concat': ['$$value', ',', '$$this']}
+                            ]
+                        }
+                    }
+                }
+            }
+        })
+        
+        # Add LIMIT if specified
+        if parsed_sql.get('limit'):
+            pipeline.append({'$limit': parsed_sql['limit']['count']})
+        
+        return {
+            'operation': 'aggregate',
+            'collection': parsed_sql.get('from'),
+            'pipeline': pipeline
+        }
+    
+    def _translate_statistical_aggregate(self, parsed_sql: Dict[str, Any], func_name: str, field: str) -> Dict[str, Any]:
+        """Translate statistical functions like STDDEV_POP, VAR_POP, etc."""
+        if field == '*':
+            raise Exception(f"{func_name} requires a specific field, not *")
+        
+        # Build aggregation pipeline
+        pipeline = []
+        
+        # Add match stage if WHERE clause exists
+        if parsed_sql.get('where'):
+            match_filter = self._translate_where(parsed_sql['where'])
+            if match_filter:
+                pipeline.append({'$match': match_filter})
+        
+        # Map function names to MongoDB operators
+        mongo_op_map = {
+            'STDDEV_POP': '$stdDevPop',
+            'STDDEV_SAMP': '$stdDevSamp',
+            'VAR_POP': '$stdDevPop',  # Will square this
+            'VAR_SAMP': '$stdDevSamp'  # Will square this
+        }
+        
+        mongo_op = mongo_op_map.get(func_name)
+        if not mongo_op:
+            raise Exception(f"Unsupported statistical function: {func_name}")
+        
+        # Group stage
+        group_stage = {
+            '$group': {
+                '_id': None,
+                'result': {mongo_op: f'${field}'}
+            }
+        }
+        pipeline.append(group_stage)
+        
+        # For variance functions, square the standard deviation
+        if func_name in ['VAR_POP', 'VAR_SAMP']:
+            pipeline.append({
+                '$project': {
+                    '_id': 0,
+                    f'{func_name}({field})': {'$multiply': ['$result', '$result']}
+                }
+            })
+        else:
+            pipeline.append({
+                '$project': {
+                    '_id': 0,
+                    f'{func_name}({field})': '$result'
+                }
+            })
+        
+        return {
+            'operation': 'aggregate',
+            'collection': parsed_sql.get('from'),
+            'pipeline': pipeline
+        }
+    
+    def _translate_bitwise_aggregate(self, parsed_sql: Dict[str, Any], func_name: str, field: str) -> Dict[str, Any]:
+        """Translate bitwise aggregate functions like BIT_AND, BIT_OR, BIT_XOR"""
+        if field == '*':
+            raise Exception(f"{func_name} requires a specific field, not *")
+        
+        # Build aggregation pipeline
+        pipeline = []
+        
+        # Add match stage if WHERE clause exists
+        if parsed_sql.get('where'):
+            match_filter = self._translate_where(parsed_sql['where'])
+            if match_filter:
+                pipeline.append({'$match': match_filter})
+        
+        # Map function names to MongoDB operators (MongoDB 4.4+)
+        mongo_op_map = {
+            'BIT_AND': '$bitAnd',
+            'BIT_OR': '$bitOr', 
+            'BIT_XOR': '$bitXor'
+        }
+        
+        mongo_op = mongo_op_map.get(func_name)
+        if not mongo_op:
+            raise Exception(f"Unsupported bitwise function: {func_name}")
+        
+        # Group stage - collect all values first
+        pipeline.append({
+            '$group': {
+                '_id': None,
+                'values': {'$push': f'${field}'}
+            }
+        })
+        
+        # Apply bitwise operation using $reduce
+        reduce_op = {
+            'BIT_AND': {'$bitAnd': ['$$value', '$$this']},
+            'BIT_OR': {'$bitOr': ['$$value', '$$this']},
+            'BIT_XOR': {'$bitXor': ['$$value', '$$this']}
+        }
+        
+        operation = reduce_op.get(func_name)
+        if not operation:
+            raise Exception(f"Unsupported bitwise operation: {func_name}")
+        
+        # Use reduce to apply operation across all values
+        initial_values = {
+            'BIT_AND': {'$arrayElemAt': ['$values', 0]},  # Start with first value for AND
+            'BIT_OR': 0,   # Start with 0 for OR
+            'BIT_XOR': 0   # Start with 0 for XOR
+        }
+        
+        pipeline.append({
+            '$project': {
+                '_id': 0,
+                f'{func_name}({field})': {
+                    '$reduce': {
+                        'input': {'$slice': ['$values', 1, {'$size': '$values'}]} if func_name == 'BIT_AND' else '$values',
+                        'initialValue': initial_values[func_name],
+                        'in': operation
+                    }
+                }
+            }
+        })
+        
+        # Add LIMIT if specified
+        if parsed_sql.get('limit'):
+            pipeline.append({'$limit': parsed_sql['limit']['count']})
+        
+        return {
+            'operation': 'aggregate',
+            'collection': parsed_sql.get('from'),
+            'pipeline': pipeline
+        }
+
     def _handle_no_table_query(self, parsed_sql: Dict[str, Any]) -> Dict[str, Any]:
         """Handle SELECT queries without FROM clause (like SELECT 1+1, SELECT NOW())"""
         columns = parsed_sql.get('columns', [])

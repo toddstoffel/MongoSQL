@@ -62,6 +62,57 @@ class AggregateFunctionMapper:
                 'type': 'aggregate',
                 'description': 'Calculate standard deviation'
             },
+            'STDDEV_POP': {
+                'mongodb': '$stdDevPop',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Calculate population standard deviation'
+            },
+            'STDDEV_SAMP': {
+                'mongodb': '$stdDevSamp',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Calculate sample standard deviation'
+            },
+            'VAR_POP': {
+                'mongodb': '$stdDevPop',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Calculate population variance (stddev squared)',
+                'transform': 'square'
+            },
+            'VAR_SAMP': {
+                'mongodb': '$stdDevSamp',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Calculate sample variance (stddev squared)',
+                'transform': 'square'
+            },
+            'GROUP_CONCAT': {
+                'mongodb': '$push',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Concatenate values from multiple rows',
+                'post_process': 'join_array'
+            },
+            'BIT_AND': {
+                'mongodb': '$bitAnd',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Bitwise AND operation on all values'
+            },
+            'BIT_OR': {
+                'mongodb': '$bitOr',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Bitwise OR operation on all values'
+            },
+            'BIT_XOR': {
+                'mongodb': '$bitXor',
+                'stage': '$group',
+                'type': 'aggregate',
+                'description': 'Bitwise XOR operation on all values'
+            },
             'VARIANCE': {
                 'mongodb': '$stdDevPop',
                 'stage': '$group',
@@ -102,7 +153,28 @@ class AggregateFunctionMapper:
                     },
                     'stage': mapping['stage']
                 }
-        
+
+        # Handle GROUP_CONCAT special case
+        if func_upper == 'GROUP_CONCAT':
+            if field:
+                return {
+                    'operator': mapping['mongodb'],
+                    'value': f'${field}',
+                    'stage': mapping['stage'],
+                    'post_process': mapping.get('post_process'),
+                    'separator': ','  # Default separator
+                }
+            
+        # Handle variance functions (need to square stddev result)
+        if func_upper in ['VAR_POP', 'VAR_SAMP', 'VARIANCE']:
+            if field:
+                return {
+                    'operator': mapping['mongodb'],
+                    'value': f'${field}',
+                    'stage': mapping['stage'],
+                    'transform': mapping.get('transform')
+                }
+
         # Handle other aggregate functions
         if field:
             return {
