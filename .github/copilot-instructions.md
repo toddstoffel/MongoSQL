@@ -7,7 +7,7 @@
 - **REFRESH** memory with MariaDB, MongoDB, and SQL parsing resources from the knowledge base
 - **CHECK** reserved words documentation at: https://mariadb.com/docs/server/reference/sql-structure/sql-language-structure/reserved-words
 - **REFERENCE** MongoDB operators at: https://docs.mongodb.com/manual/reference/operator/aggregation/
-- **USE** the `src/reserved_words/` module for proper identifier handling and escaping
+- **USE** https://mariadb.com/docs/server/reference/sql-structure/sql-language-structure/reserved-words for proper identifier handling and escaping
 - **CONSULT** KB files for function mappings, compatibility matrices, and implementation patterns
 
 ### 0.5. TRANSLATION-ONLY ARCHITECTURE - CRITICAL

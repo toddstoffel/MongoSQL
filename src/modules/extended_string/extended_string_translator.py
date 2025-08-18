@@ -20,19 +20,20 @@ class ExtendedStringTranslator:
 
     def __init__(self):
         """Initialize the Extended String translator"""
-        self.operation_map = {
+        # Translation methods for each operation type
+        self.translators = {
             ExtendedStringOperationType.CONCAT_WS: self._translate_concat_ws,
             ExtendedStringOperationType.REGEXP_SUBSTR: self._translate_regexp_substr,
             ExtendedStringOperationType.FORMAT: self._translate_format,
             ExtendedStringOperationType.SOUNDEX: self._translate_soundex,
             ExtendedStringOperationType.HEX: self._translate_hex,
             ExtendedStringOperationType.UNHEX: self._translate_unhex,
-            ExtendedStringOperationType.BIN: self._translate_bin,
+            ExtendedStringOperationType.BIN: self._translate_bin
         }
 
     def translate(self, operation: ExtendedStringOperation) -> Dict[str, Any]:
         """Translate an ExtendedStringOperation to MongoDB expression"""
-        translator = self.operation_map.get(operation.operation_type)
+        translator = self.translators.get(operation.operation_type)
         if not translator:
             raise ValueError(f"Unsupported extended string operation: {operation.operation_type}")
         
@@ -568,7 +569,7 @@ class ExtendedStringTranslator:
             return True
         except ValueError:
             return False
-
+    
     def _ensure_string_field(self, value: Any) -> Any:
         """Ensure value is properly formatted for MongoDB string operations"""
         if isinstance(value, str):

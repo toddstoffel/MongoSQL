@@ -117,7 +117,7 @@ EXTENDED_STRING_FUNCTION_MAPPINGS = {
         'max_args': 1, 
         'example': "UNHEX('48656C6C6F') -> 'Hello'"
     },
-    'BIN': {
+        'BIN': {
         'mongodb_operator': '$function',  # Custom JavaScript function
         'description': 'Convert number to binary representation',
         'min_args': 1,  # number to convert
@@ -125,8 +125,6 @@ EXTENDED_STRING_FUNCTION_MAPPINGS = {
         'example': "BIN(42) -> '101010'"
     }
 }
-
-
 def get_extended_string_function_info(function_name: str) -> Optional[Dict[str, Any]]:
     """Get information about an extended string function"""
     return EXTENDED_STRING_FUNCTION_MAPPINGS.get(function_name.upper())

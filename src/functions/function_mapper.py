@@ -10,6 +10,7 @@ from .datetime_functions import DateTimeFunctionMapper
 from ..modules.conditional.conditional_function_mapper import ConditionalFunctionMapper
 from ..modules.json.json_function_mapper import JSONFunctionMapper
 from ..modules.extended_string.extended_string_function_mapper import ExtendedStringFunctionMapper
+from ..modules.regexp.regexp_function_mapper import RegexpFunctionMapper
 
 class FunctionMapper:
     """Master mapper that delegates to specialized function mappers"""
@@ -36,6 +37,7 @@ class FunctionMapper:
         self.conditional_mapper = ConditionalFunctionMapper()
         self.json_mapper = JSONFunctionMapper()
         self.extended_string_mapper = ExtendedStringFunctionMapper()
+        self.regexp_mapper = RegexpFunctionMapper()
         
         # Cache for function categorization
         self._function_categories = self._build_function_categories()
@@ -150,6 +152,14 @@ class FunctionMapper:
     def is_extended_string_function(self, function_name: str) -> bool:
         """Check if function is an extended string function"""
         return self.extended_string_mapper.is_extended_string_function(function_name)
+    
+    def is_regexp_expression(self, expression: str) -> bool:
+        """Check if expression contains REGEXP operators"""
+        return self.regexp_mapper.has_regexp_expressions(expression)
+    
+    def map_regexp_expression(self, expression: str, context: str = 'SELECT', alias: str = None) -> Optional[Dict[str, Any]]:
+        """Map REGEXP expressions to MongoDB expressions"""
+        return self.regexp_mapper.translate_infix_regexp(expression, context, alias)
     
     def get_all_supported_functions(self) -> Dict[str, List[str]]:
         """Get all supported functions organized by category"""
