@@ -474,6 +474,10 @@ class MongoSQLTranslator:
             converted_value = self._convert_value(value)
             regex_pattern = str(converted_value).replace('%', '.*').replace('_', '.')
             return {field: {'$regex': regex_pattern, '$options': 'i'}}
+        elif operator.upper() in ['REGEXP', 'REGEX', 'RLIKE']:
+            # Handle REGEXP/REGEX/RLIKE operators - direct regex pattern
+            converted_value = self._convert_value(value)
+            return {field: {'$regex': str(converted_value), '$options': 'i'}}
         elif operator.upper() == 'IN':
             # Handle IN operator
             if isinstance(value, list):

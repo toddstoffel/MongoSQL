@@ -85,6 +85,9 @@ class WhereTranslator:
             # Convert SQL LIKE pattern to MongoDB regex
             regex_pattern = self._like_to_regex(value)
             return {field: {"$regex": regex_pattern, "$options": "i"}}
+        elif operator == 'REGEXP' or operator == 'REGEX' or operator == 'RLIKE':
+            # Direct regex pattern for REGEXP/REGEX/RLIKE operators
+            return {field: {"$regex": value, "$options": "i"}}
         elif operator == 'IN':
             return {field: {"$in": value if isinstance(value, list) else [value]}}
         elif operator == 'NOT IN':

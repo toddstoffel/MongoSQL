@@ -68,8 +68,8 @@ class WhereParser:
             
             # If no conditions were parsed, fall back
             if (isinstance(result, dict) and 
-                ('type' not in result or 
-                 (result.get('type') == 'compound' and not result.get('conditions')))):
+                (result.get('type') == 'compound' and not result.get('conditions')) or
+                (not result.get('field') and not result.get('type'))):
                 return self._parse_simple_where(where_str)
             
             return result
@@ -141,7 +141,7 @@ class WhereParser:
                         field = str(token).strip()
                 
                 # Operator
-                elif token.ttype in [T.Operator.Comparison] or str(token).strip().upper() in ['LIKE', 'IN', 'BETWEEN']:
+                elif token.ttype in [T.Operator.Comparison] or str(token).strip().upper() in ['LIKE', 'IN', 'BETWEEN', 'REGEXP', 'REGEX', 'RLIKE']:
                     operator = str(token).strip().upper()
                 
                 # Value (string literal, number, etc.)

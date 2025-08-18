@@ -562,9 +562,14 @@ class MariaDBQARunner:
             ("SELECT CONCAT_WS('-', 'Alpha', 'Beta', 'Gamma')", "CONCAT_WS"),
             ("SELECT CONCAT_WS(', ', customerName, city, country) FROM customers LIMIT 1", "CONCAT_WS_TABLE"),
             
-            # Regular expressions
+            # Regular expressions - comprehensive coverage
             ("SELECT customerName FROM customers WHERE customerName REGEXP '^A.*' LIMIT 3", "REGEXP_BASIC"),
             ("SELECT REGEXP_SUBSTR('Hello World 123', '[0-9]+')", "REGEXP_SUBSTR"),
+            ("SELECT customerName FROM customers WHERE customerName RLIKE '.*Inc$' LIMIT 2", "RLIKE_BASIC"),
+            ("SELECT 'test123' REGEXP '[0-9]+' AS has_numbers", "REGEXP_PATTERN_DIGITS"),
+            ("SELECT 'Email@domain.com' REGEXP '[A-Za-z]+@[A-Za-z]+\\.[A-Za-z]+' AS valid_email", "REGEXP_EMAIL_PATTERN"),
+            ("SELECT customerName FROM customers WHERE customerName REGEXP '(Co|Inc|Ltd)\\.' LIMIT 2", "REGEXP_ALTERNATION"),
+            ("SELECT 'ABC123def' REGEXP '^[A-Z]+[0-9]+[a-z]+$' AS pattern_match", "REGEXP_COMPLEX_PATTERN"),
             
             # Number formatting
             ("SELECT FORMAT(1234567.89, 2)", "FORMAT_NUMBER"),
