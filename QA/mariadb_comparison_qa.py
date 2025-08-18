@@ -482,10 +482,10 @@ class MariaDBQARunner:
     def _get_join_tests(self) -> List[Tuple[str, str]]:
         """Get JOIN operation test cases"""
         return [
-            ("SELECT c.customerName, o.orderDate FROM customers c INNER JOIN orders o ON c.customerNumber = o.customerNumber LIMIT 1", "INNER_JOIN"),
-            ("SELECT c.customerName, o.orderDate FROM customers c LEFT JOIN orders o ON c.customerNumber = o.customerNumber LIMIT 1", "LEFT_JOIN"),
-            ("SELECT c.customerName, o.orderDate FROM customers c RIGHT JOIN orders o ON c.customerNumber = o.customerNumber LIMIT 1", "RIGHT_JOIN"),
-            ("SELECT c.customerName, od.quantityOrdered FROM customers c INNER JOIN orders o ON c.customerNumber = o.customerNumber INNER JOIN orderdetails od ON o.orderNumber = od.orderNumber LIMIT 1", "MULTI_JOIN"),
+            ("SELECT c.customerName, o.orderDate FROM customers c INNER JOIN orders o ON c.customerNumber = o.customerNumber ORDER BY customerName LIMIT 1", "INNER_JOIN"),
+            ("SELECT c.customerName, o.orderDate FROM customers c LEFT JOIN orders o ON c.customerNumber = o.customerNumber ORDER BY customerName LIMIT 1", "LEFT_JOIN"),
+            ("SELECT c.customerName, o.orderDate FROM customers c RIGHT JOIN orders o ON c.customerNumber = o.customerNumber ORDER BY c.customerNumber LIMIT 1", "RIGHT_JOIN"),
+            ("SELECT c.customerName, od.quantityOrdered FROM customers c INNER JOIN orders o ON c.customerNumber = o.customerNumber INNER JOIN orderdetails od ON o.orderNumber = od.orderNumber ORDER BY customerName LIMIT 1", "MULTI_JOIN"),
         ]
     
     def _get_groupby_tests(self) -> List[Tuple[str, str]]:
@@ -515,8 +515,8 @@ class MariaDBQARunner:
     def _get_conditional_tests(self) -> List[Tuple[str, str]]:
         """Get conditional function test cases"""
         return [
-            ("SELECT IF(creditLimit > 50000, 'High', 'Low') FROM customers LIMIT 1", "IF_FUNCTION"),
-            ("SELECT CASE WHEN creditLimit > 100000 THEN 'Premium' WHEN creditLimit > 50000 THEN 'Standard' ELSE 'Basic' END FROM customers LIMIT 1", "CASE_WHEN"),
+            ("SELECT IF(creditLimit > 50000, 'High', 'Low') FROM customers ORDER BY customerNumber LIMIT 1", "IF_FUNCTION"),
+            ("SELECT CASE WHEN creditLimit > 100000 THEN 'Premium' WHEN creditLimit > 50000 THEN 'Standard' ELSE 'Basic' END FROM customers ORDER BY customerNumber LIMIT 1", "CASE_WHEN"),
             ("SELECT COALESCE(NULL, 'Default Value')", "COALESCE"),
             ("SELECT NULLIF('test', 'test')", "NULLIF"),
         ]
@@ -525,10 +525,10 @@ class MariaDBQARunner:
         """Get subquery test cases - all 5 MariaDB subquery types"""
         return [
             ("SELECT customerName FROM customers WHERE customerNumber = (SELECT customerNumber FROM orders ORDER BY orderDate DESC LIMIT 1)", "SUBQUERY_SCALAR"),
-            ("SELECT customerName FROM customers WHERE customerNumber IN (SELECT customerNumber FROM orders WHERE orderDate > '2004-01-01')", "SUBQUERY_TABLE"),
-            ("SELECT customerName FROM customers WHERE EXISTS (SELECT 1 FROM orders WHERE orders.customerNumber = customers.customerNumber) LIMIT 1", "SUBQUERY_CORRELATED"),
+            ("SELECT customerName FROM customers WHERE customerNumber IN (SELECT customerNumber FROM orders WHERE orderDate > '2004-01-01') ORDER BY customerNumber LIMIT 1", "SUBQUERY_TABLE"),
+            ("SELECT customerName FROM customers WHERE EXISTS (SELECT 1 FROM orders WHERE orders.customerNumber = customers.customerNumber) ORDER BY customerNumber LIMIT 1", "SUBQUERY_CORRELATED"),
             ("SELECT customerName FROM customers WHERE (customerNumber, country) = (SELECT customerNumber, country FROM customers WHERE customerName = 'Atelier graphique')", "SUBQUERY_ROW"),
-            ("SELECT c.customerName, o.total_orders FROM customers c, (SELECT customerNumber, COUNT(*) as total_orders FROM orders GROUP BY customerNumber) o WHERE c.customerNumber = o.customerNumber LIMIT 5", "SUBQUERY_DERIVED"),
+            ("SELECT c.customerName, o.total_orders FROM customers c, (SELECT customerNumber, COUNT(*) as total_orders FROM orders GROUP BY customerNumber) o WHERE c.customerNumber = o.customerNumber ORDER BY c.customerNumber LIMIT 5", "SUBQUERY_DERIVED"),
         ]
 
     # PHASE 2: MODERN APPLICATION EXTENSIONS

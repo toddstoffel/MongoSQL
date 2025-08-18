@@ -115,14 +115,15 @@ class RightJoinHandler(JoinTypeHandler):
     
     def create_lookup_stage(self, join_op: JoinOperation) -> Dict[str, Any]:
         """Create $lookup stage for RIGHT JOIN"""
-        # For RIGHT JOIN, we start from right table and lookup left table
+        # For RIGHT JOIN, we start from the right table and lookup the left table
+        # Since we're now starting from the right table, we lookup the left table
         condition = join_op.conditions[0]  # For now, handle single condition
         return {
             "$lookup": {
-                "from": join_op.left_table,  # Lookup the left table
-                "localField": condition.right_column,  # Use right column as local
-                "foreignField": condition.left_column,  # Use left column as foreign
-                "as": f"{join_op.left_table}_joined"  # Store as left table joined
+                "from": join_op.left_table,  # Lookup the left table (customers)
+                "localField": condition.right_column,  # Use right table column (customerNumber from orders)
+                "foreignField": condition.left_column,  # Use left table column (customerNumber from customers)
+                "as": f"{join_op.left_table}_joined"  # Store as customers_joined
             }
         }
     

@@ -103,7 +103,7 @@ class TokenBasedSQLParser:
                 result['group_by'] = fields
             elif token.ttype is Keyword and token.value.upper() == 'HAVING':
                 i = self._parse_having_clause(tokens, i + 1, result)
-            elif token.ttype is Keyword and token.value.upper() == 'ORDER BY':
+            elif token.ttype is Keyword and token.value.upper() in ['ORDER BY', 'ORDER']:
                 i = self._parse_order_clause(tokens, i, result)
             elif token.ttype is Keyword and token.value.upper() == 'LIMIT':
                 i = self._parse_limit_clause(tokens, i + 1, result)
@@ -488,7 +488,7 @@ class TokenBasedSQLParser:
                 token = tokens[i]
                 if (token.ttype is Keyword and 
                     ('JOIN' in token.value.upper() or 
-                     token.value.upper() in ['WHERE', 'ORDER', 'LIMIT', 'GROUP'])):
+                     token.value.upper() in ['WHERE', 'ORDER', 'ORDER BY', 'LIMIT', 'GROUP'])):
                     break
                 condition_tokens.append(token)
                 i += 1
@@ -567,7 +567,7 @@ class TokenBasedSQLParser:
             
             # Stop at keywords that end WHERE clause
             if (token.ttype is Keyword and 
-                token.value.upper() in ['ORDER', 'GROUP', 'LIMIT', 'HAVING']):
+                token.value.upper() in ['ORDER', 'ORDER BY', 'GROUP', 'GROUP BY', 'LIMIT', 'HAVING']):
                 break
             
             where_tokens.append(token)

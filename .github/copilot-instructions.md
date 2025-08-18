@@ -97,6 +97,16 @@
 - QA testing should prove our translator produces equivalent results to MariaDB for valid SQL
 - **ACHIEVEMENT**: All test categories now pass (100% success across 69 tests)
 
+### 7.5. DETERMINISTIC ORDERING - CRITICAL FOR COMPATIBILITY
+- **MONGODB vs MARIADB ORDERING**: MongoDB returns documents in arbitrary order, MariaDB has consistent default order (InnoDB storage order)
+- **ALWAYS USE EXPLICIT ORDER BY**: Never rely on implicit ordering for test comparisons
+- **NULL HANDLING**: Different systems may sort NULL values differently (NULLS FIRST vs NULLS LAST)
+- **MULTI-FIELD ORDERING**: Ensure ORDER BY clauses are deterministic enough to produce identical results
+- **RIGHT/LEFT JOIN CONSIDERATIONS**: JOIN results may include NULL values that affect ordering
+- **TESTING REQUIREMENT**: Both systems must return identical ordered results for valid comparison
+- **DEBUGGING TIP**: If results differ, first verify both systems use same ORDER BY with deterministic fields
+- **EXAMPLE ISSUE**: `ORDER BY c.customerNumber` in RIGHT JOIN may have NULL customerNumbers with different sort behavior
+
 ### 8. CURRENT PROJECT STATUS
 - MongoSQL translator with **100% MariaDB compatibility (69/69 tests passing)** 🎉
 - **COMPLETE SUBQUERY SUPPORT**: All 5 subquery patterns fully implemented and tested

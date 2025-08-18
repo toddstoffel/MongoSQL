@@ -45,6 +45,45 @@ class JoinTranslator:
         
         return pipeline
     
+    def _resolve_field_for_joins(self, field: str, joins: List[JoinOperation], base_collection: str) -> str:
+        """Resolve field name for JOIN context in ORDER BY"""
+        # If field already has table prefix, handle it
+        if '.' in field:
+            table_part, col_part = field.split('.', 1)
+            
+            # Check if it's from a joined table
+            for join_op in joins:
+                if join_op.join_type == JoinType.RIGHT:
+                    # For RIGHT JOIN:
+                    # - We start from right table (base collection)
+                    # - We lookup left table, stored as left_table_joined
+                    if (join_op.left_table == table_part or 
+                        join_op.alias_left == table_part):
+                        # Field from left table (which was joined)
+                        return f"{join_op.left_table}_joined.{col_part}"
+                    elif (join_op.right_table == table_part or 
+                          join_op.alias_right == table_part):
+                        # Field from right table (base collection)
+                        return col_part
+                else:
+                    # For INNER/LEFT JOIN
+                    if (join_op.right_table == table_part or 
+                        join_op.alias_right == table_part):
+                        # Field from joined table
+                        return f"{join_op.right_table}_joined.{col_part}"
+                    elif (join_op.left_table == table_part or 
+                          join_op.alias_left == table_part):
+                        # Field from left table (base)
+                        return col_part
+            
+            # Field from base table
+            return col_part
+        else:
+            # Simple field name - assume from base table unless found in joined table
+            # Check if this field exists in any joined table and is unique
+            return field  # For now, assume it's from base table
+    
+    
     def _create_enhanced_lookup_stage(self, join_op: JoinOperation, handler, previous_joins: List[JoinOperation]) -> Dict[str, Any]:
         """Create $lookup stage considering previous joins"""
         # For RIGHT JOIN, use the handler's logic directly
@@ -77,7 +116,7 @@ class JoinTranslator:
     def _create_unwind_stage(self, join_op: JoinOperation, handler) -> Dict[str, Any]:
         """Create $unwind stage for JOIN operation"""
         if join_op.join_type == JoinType.RIGHT:
-            # RIGHT JOIN: unwind the left table that was joined
+            # RIGHT JOIN: We start from right table and lookup left table, so unwind left table
             field_path = f"${join_op.left_table}_joined"
         else:
             # LEFT/INNER JOIN: unwind the right table that was joined
@@ -161,7 +200,9 @@ class JoinTranslator:
             # Find if this is from a joined table
             for join_op in joins:
                 if join_op.join_type == JoinType.RIGHT:
-                    # For RIGHT JOIN, check both left and right tables
+                    # For RIGHT JOIN:
+                    # - We start from right table (base collection)
+                    # - We lookup left table, stored as left_table_joined
                     if (join_op.left_table == actual_table or 
                         join_op.alias_left == table_part):
                         # Field from left table (which was joined)
@@ -280,7 +321,6 @@ class JoinTranslator:
         # For RIGHT JOIN, we need to start from the right table
         if joins and joins[0].join_type == JoinType.RIGHT:
             base_collection = joins[0].right_table
-            # Also need to swap the lookup logic for RIGHT JOIN
         
         # Start building aggregation pipeline
         pipeline = []
@@ -301,16 +341,26 @@ class JoinTranslator:
                 if adjusted_filter:
                     match_stage = {"$match": adjusted_filter}
                     pipeline.append(match_stage)
+
+        # Add ORDER BY (must be before projection to use original field paths)
+        if parsed_sql.get('order_by'):
+            order_by_list = parsed_sql['order_by']
+            sort_spec = {}
+            for order_item in order_by_list:
+                field = order_item['field']
+                direction = 1 if order_item['direction'] == 'ASC' else -1
+                
+                # Resolve field name for JOIN context
+                resolved_field = self._resolve_field_for_joins(field, joins, base_collection)
+                sort_spec[resolved_field] = direction
+            
+            sort_stage = {"$sort": sort_spec}
+            pipeline.append(sort_stage)
         
-        # Add projection
+        # Add projection (after sorting to maintain field paths)
         columns = parsed_sql.get('columns', ['*'])
         projection = self.create_projection_with_joins(columns, joins, base_collection)
         pipeline.append(projection)
-        
-        # Add ORDER BY
-        if parsed_sql.get('order_by'):
-            sort_stage = {"$sort": parsed_sql['order_by']}
-            pipeline.append(sort_stage)
         
         # Add LIMIT
         if parsed_sql.get('limit'):

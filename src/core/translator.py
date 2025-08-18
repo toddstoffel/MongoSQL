@@ -985,7 +985,26 @@ class MongoSQLTranslator:
             )
             pipeline.extend(subquery_stages)
         
-        # Add limit stage if LIMIT exists (before project to improve performance)
+        # Add ORDER BY stage if ORDER BY exists (must be before LIMIT)
+        if parsed_sql.get('order_by') or parsed_sql.get('original_sql'):
+            if parsed_sql.get('order_by'):
+                # Use parsed order_by if available
+                sort_spec = {}
+                for order_item in parsed_sql['order_by']:
+                    direction = 1 if order_item['direction'] == 'ASC' else -1
+                    sort_spec[order_item['field']] = direction
+                pipeline.append({'$sort': sort_spec})
+            else:
+                # Try to parse ORDER BY from original SQL
+                original_sql = parsed_sql.get('original_sql', '')
+                if original_sql:
+                    order_by_clause = self.orderby_parser.parse_order_by(original_sql)
+                    if order_by_clause and not order_by_clause.is_empty():
+                        sort_stages = self.orderby_translator.get_sort_pipeline_stage(order_by_clause)
+                        if sort_stages:
+                            pipeline.extend(sort_stages)
+        
+        # Add limit stage if LIMIT exists (must be after ORDER BY)
         if parsed_sql.get('limit'):
             limit_info = parsed_sql['limit']
             if 'offset' in limit_info:
@@ -1396,7 +1415,43 @@ class MongoSQLTranslator:
                 col_name = col['column']
                 projection_stage[col_name] = f"${col_name}"
         
-        # Add projection stage if we have specific columns
+        # Add ORDER BY using modular parser - MUST come before final projection
+        if parsed_sql.get('order_by') or parsed_sql.get('original_sql'):
+            if parsed_sql.get('order_by'):
+                # Use parsed order_by if available
+                sort_spec = {}
+                for order_item in parsed_sql['order_by']:
+                    field_name = order_item['field']
+                    direction = 1 if order_item['direction'] == 'ASC' else -1
+                    
+                    # Handle aliased field references for DERIVED subqueries
+                    if has_derived_subquery and '.' in field_name:
+                        alias, field = field_name.split('.', 1)
+                        if alias == 'c':
+                            # Main table alias - use root field name
+                            sort_spec[field] = direction
+                        elif alias == 'o':
+                            # Derived table alias - use derived_orders field path
+                            sort_spec[f"derived_orders.{field}"] = direction
+                        else:
+                            # Unknown alias - use field name as-is
+                            sort_spec[field_name] = direction
+                    else:
+                        # Normal field mapping
+                        sort_spec[field_name] = direction
+                        
+                pipeline.append({'$sort': sort_spec})
+            else:
+                # Try to parse ORDER BY from original SQL
+                original_sql = parsed_sql.get('original_sql', '')
+                if original_sql:
+                    order_by_clause = self.orderby_parser.parse_order_by(original_sql)
+                    if order_by_clause and not order_by_clause.is_empty():
+                        sort_stages = self.orderby_translator.get_sort_pipeline_stage(order_by_clause)
+                        if sort_stages:
+                            pipeline.extend(sort_stages)
+        
+        # Add projection stage if we have specific columns - MUST come after ORDER BY
         if projection_stage:
             pipeline.append({'$project': projection_stage})
         

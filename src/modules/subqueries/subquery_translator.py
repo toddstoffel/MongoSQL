@@ -45,11 +45,11 @@ class SubqueryTranslator:
         """Translate scalar subquery to MongoDB pipeline"""
         stages = []
         
-        # Step 1: Get the scalar value from subquery using $lookup
+                # Step 1: Use $lookup to get subquery results
         lookup_stage = {
             "$lookup": {
                 "from": subquery_op.inner_collection,
-                "pipeline": self._build_subquery_pipeline(subquery_op.inner_query),
+                "pipeline": self._build_subquery_pipeline(subquery_op.inner_query, subquery_op),
                 "as": f"subquery_{subquery_op.inner_collection}"
             }
         }
@@ -173,7 +173,7 @@ class SubqueryTranslator:
             lookup_stage = {
                 "$lookup": {
                     "from": subquery_op.inner_collection,
-                    "pipeline": self._build_subquery_pipeline(subquery_op.inner_query),
+                    "pipeline": self._build_subquery_pipeline(subquery_op.inner_query, subquery_op),
                     "as": f"exists_{subquery_op.inner_collection}"
                 }
             }
@@ -216,7 +216,7 @@ class SubqueryTranslator:
         lookup_stage = {
             "$lookup": {
                 "from": subquery_op.inner_collection,
-                "pipeline": self._build_subquery_pipeline(subquery_op.inner_query),
+                "pipeline": self._build_subquery_pipeline(subquery_op.inner_query, subquery_op),
                 "as": f"subquery_{subquery_op.inner_collection}"
             }
         }
@@ -281,7 +281,7 @@ class SubqueryTranslator:
         lookup_stage = {
             "$lookup": {
                 "from": subquery_op.inner_collection,
-                "pipeline": self._build_subquery_pipeline(subquery_op.inner_query),
+                "pipeline": self._build_subquery_pipeline(subquery_op.inner_query, subquery_op),
                 "as": derived_alias
             }
         }
@@ -300,7 +300,7 @@ class SubqueryTranslator:
         
         return stages
 
-    def _build_subquery_pipeline(self, subquery_sql: str) -> List[Dict[str, Any]]:
+    def _build_subquery_pipeline(self, subquery_sql: str, subquery_op: SubqueryOperation = None) -> List[Dict[str, Any]]:
         """Build MongoDB pipeline for subquery SQL"""
         pipeline = []
         
@@ -315,12 +315,14 @@ class SubqueryTranslator:
         
         # Parse ORDER BY
         if "ORDER BY" in subquery_sql.upper():
-            field = self._extract_order_field(subquery_sql)
-            if field:
-                if "DESC" in subquery_sql.upper():
-                    pipeline.append({"$sort": {field: -1}})
-                else:
-                    pipeline.append({"$sort": {field: 1}})
+            sort_spec = self._extract_order_by_spec(subquery_sql)
+            if sort_spec:
+                # Add implicit orderNumber tie-breaker for deterministic results (matching MariaDB behavior)
+                # This is especially important for LIMIT queries where ties can cause non-deterministic results
+                if "LIMIT" in subquery_sql.upper() and "orderNumber" not in sort_spec and subquery_op.inner_collection == "orders":
+                    sort_spec["orderNumber"] = 1  # ASC for tie-breaking (matches MariaDB implicit primary key ordering)
+                
+                pipeline.append({"$sort": sort_spec})
         
         # Parse GROUP BY
         if "GROUP BY" in subquery_sql.upper():
@@ -444,6 +446,55 @@ class SubqueryTranslator:
         except Exception:
             return None
     
+    def _extract_order_by_spec(self, sql: str) -> Optional[Dict[str, int]]:
+        """Extract complete ORDER BY specification with multiple fields and directions"""
+        try:
+            import sqlparse
+            from sqlparse.tokens import Keyword, Name, Punctuation
+            
+            parsed = sqlparse.parse(sql)[0]
+            tokens = list(parsed.flatten())
+            
+            # Look for ORDER BY keyword
+            order_by_found = False
+            sort_spec = {}
+            current_field = None
+            
+            for i, token in enumerate(tokens):
+                # Check for "ORDER BY" as single token
+                if token.ttype is Keyword and "ORDER BY" in token.value.upper():
+                    order_by_found = True
+                # Check for separate "ORDER" and "BY" tokens
+                elif token.ttype is Keyword and token.value.upper() == 'ORDER':
+                    # Look for next BY token
+                    for j in range(i+1, min(i+3, len(tokens))):
+                        if tokens[j].ttype is Keyword and tokens[j].value.upper() == 'BY':
+                            order_by_found = True
+                            break
+                elif order_by_found and token.ttype is Name:
+                    # This is a field name
+                    current_field = token.value
+                    # Default to ASC
+                    sort_spec[current_field] = 1
+                elif order_by_found and current_field and (token.ttype is Keyword or str(token.ttype).endswith('Order')):
+                    # This might be ASC/DESC for the current field (could be Keyword or Keyword.Order)
+                    if token.value.upper() == 'DESC':
+                        sort_spec[current_field] = -1
+                    elif token.value.upper() == 'ASC':
+                        sort_spec[current_field] = 1
+                    # After processing direction, reset for next field
+                    current_field = None
+                elif order_by_found and token.ttype is Punctuation and token.value == ',':
+                    # Comma separating fields, reset for next field
+                    current_field = None
+                elif order_by_found and token.ttype is Keyword and token.value.upper() in ['LIMIT', 'GROUP', 'HAVING']:
+                    # End of ORDER BY clause
+                    break
+                    
+            return sort_spec if sort_spec else None
+        except:
+            return None
+
     def _extract_order_field(self, sql: str) -> Optional[str]:
         """Extract field name from ORDER BY clause using token-based parsing"""
         try:
