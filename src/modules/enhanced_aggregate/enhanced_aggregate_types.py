@@ -14,7 +14,7 @@ class EnhancedAggregateFunctionType(Enum):
     """Types of enhanced aggregate functions"""
     GROUP_CONCAT = "GROUP_CONCAT"
     STDDEV_POP = "STDDEV_POP"
-    STDDEV_SAMP = "STDDEV_SAMP" 
+    STDDEV_SAMP = "STDDEV_SAMP"
     VAR_POP = "VAR_POP"
     VAR_SAMP = "VAR_SAMP"
     BIT_AND = "BIT_AND"
@@ -30,11 +30,11 @@ class GroupConcatFunction:
     distinct: bool = False              # Whether to use DISTINCT
     order_by: Optional[List[Dict]] = None  # ORDER BY clauses
     original_expression: str = ""       # Original SQL expression
-    
+
     def to_mongodb_aggregation(self) -> Dict[str, Any]:
         """Convert to MongoDB aggregation pipeline stages"""
         pipeline_stages = []
-        
+
         # Build the aggregation expression
         if self.distinct:
             # For DISTINCT, we need to use $addToSet first, then format
@@ -42,7 +42,7 @@ class GroupConcatFunction:
         else:
             # Regular concatenation
             group_expr = {"$push": f"${self.field}"}
-        
+
         # Add sorting if specified
         if self.order_by:
             # Add $sort stage before grouping
@@ -51,7 +51,7 @@ class GroupConcatFunction:
                 direction = 1 if order_item.get('direction', 'ASC') == 'ASC' else -1
                 sort_spec[order_item['field']] = direction
             pipeline_stages.append({"$sort": sort_spec})
-        
+
         # Group and collect values
         group_stage = {
             "$group": {
@@ -60,7 +60,7 @@ class GroupConcatFunction:
             }
         }
         pipeline_stages.append(group_stage)
-        
+
         # Convert array to string with separator
         if self.distinct:
             # For DISTINCT, sort the array first (since $addToSet doesn't preserve order)
@@ -100,7 +100,7 @@ class GroupConcatFunction:
                     }
                 }
             }
-        
+
         pipeline_stages.append(project_stage)
         return pipeline_stages
 
@@ -111,7 +111,7 @@ class StatisticalFunction:
     function_type: EnhancedAggregateFunctionType
     field: str
     original_expression: str = ""
-    
+
     def to_mongodb_aggregation(self) -> Dict[str, Any]:
         """Convert to MongoDB aggregation expression with MariaDB precision"""
         if self.function_type == EnhancedAggregateFunctionType.STDDEV_POP:
@@ -138,13 +138,13 @@ class StatisticalFunction:
             raise ValueError(f"Unsupported statistical function: {self.function_type}")
 
 
-@dataclass 
+@dataclass
 class BitwiseFunction:
     """Represents bitwise aggregate functions"""
     function_type: EnhancedAggregateFunctionType
     field: str
     original_expression: str = ""
-    
+
     def to_mongodb_aggregation(self) -> Dict[str, Any]:
         """Convert to MongoDB aggregation expression"""
         # MongoDB has native bitwise aggregation operators
@@ -164,7 +164,7 @@ class EnhancedAggregateOperation:
     function: Union[GroupConcatFunction, StatisticalFunction, BitwiseFunction]
     alias: Optional[str] = None
     context: str = "SELECT"  # SELECT, HAVING, etc.
-    
+
     def to_mongodb_expression(self) -> Dict[str, Any]:
         """Convert to MongoDB expression based on function type"""
         if isinstance(self.function, GroupConcatFunction):
@@ -180,14 +180,16 @@ def is_enhanced_aggregate_function(function_name: str) -> bool:
     """Check if a function name is an enhanced aggregate function"""
     function_name_upper = function_name.upper()
     enhanced_functions = [
-        'GROUP_CONCAT', 'STDDEV_POP', 'STDDEV_SAMP', 'VAR_POP', 'VAR_SAMP',
+        'GROUP_CONCAT', 'STDDEV_POP', 'STDDEV_SAMP',
         'BIT_AND', 'BIT_OR', 'BIT_XOR'
+        # VAR_POP and VAR_SAMP are handled by core translator statistical aggregate
     ]
     return function_name_upper in enhanced_functions
 
 
 # Supported enhanced aggregate functions list
 SUPPORTED_ENHANCED_AGGREGATE_FUNCTIONS = [
-    'GROUP_CONCAT', 'STDDEV_POP', 'STDDEV_SAMP', 'VAR_POP', 'VAR_SAMP',
+    'GROUP_CONCAT', 'STDDEV_POP', 'STDDEV_SAMP',
     'BIT_AND', 'BIT_OR', 'BIT_XOR'
+    # VAR_POP and VAR_SAMP are handled by core translator statistical aggregate
 ]

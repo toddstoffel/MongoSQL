@@ -16,11 +16,11 @@ FIELD_TYPE_MAP = {
     'classicmodels': {
         # decimal(10,2) fields
         'creditLimit': 'decimal',
-        'buyPrice': 'decimal', 
+        'buyPrice': 'decimal',
         'MSRP': 'decimal',
         'amount': 'decimal',
         'priceEach': 'decimal',
-        # int fields  
+        # int fields
         'customerNumber': 'int',
         'orderNumber': 'int',
         'quantityInStock': 'int',
@@ -51,22 +51,22 @@ def format_value(value: Any, column_name: str = None, database: str = 'classicmo
                 start = column_name.find('(') + 1
                 end = column_name.find(')')
                 field_name = column_name[start:end]
-            
+
             if field_name:
                 field_type = get_field_type(field_name, database)
-                
+
                 # AVG functions
                 if column_name.upper().startswith('AVG('):
                     if field_type == 'decimal':
                         # decimal fields: 6 decimal places
                         return f"{value:.6f}".rstrip('0').rstrip('.')
                     elif field_type == 'int':
-                        # int fields: 4 decimal places  
+                        # int fields: 4 decimal places
                         return f"{value:.4f}".rstrip('0').rstrip('.')
                     else:
                         # Default: 6 decimal places
                         return f"{value:.6f}".rstrip('0').rstrip('.')
-                
+
                 # SUM functions
                 elif column_name.upper().startswith('SUM('):
                     if field_type == 'decimal':
@@ -78,7 +78,7 @@ def format_value(value: Any, column_name: str = None, database: str = 'classicmo
                     else:
                         # Default behavior
                         return str(value)
-                
+
                 # MIN/MAX functions
                 elif column_name.upper().startswith(('MIN(', 'MAX(')):
                     if field_type == 'decimal':
@@ -90,7 +90,7 @@ def format_value(value: Any, column_name: str = None, database: str = 'classicmo
                     else:
                         # Default behavior
                         return str(value)
-                
+
                 # Mathematical functions like GREATEST, LEAST
                 elif column_name.upper().startswith(('GREATEST(', 'LEAST(')):
                     # For GREATEST/LEAST with integer inputs, return integer format
@@ -98,7 +98,12 @@ def format_value(value: Any, column_name: str = None, database: str = 'classicmo
                         return str(int(value))
                     else:
                         return str(value)
-        
+
+                # Statistical functions with MariaDB precision (6 decimal places)
+                elif column_name.upper().startswith(('STDDEV_POP(', 'STDDEV_SAMP(', 'VAR_POP(', 'VAR_SAMP(', 'VARIANCE(')):
+                    # MariaDB returns statistical functions with 6 decimal places
+                    return f"{value:.6f}".rstrip('0').rstrip('.')
+
         return str(value)
     else:
         return str(value)
@@ -106,35 +111,35 @@ def format_value(value: Any, column_name: str = None, database: str = 'classicmo
 
 class MariaDBFormatter:
     """Handles MariaDB-compatible output formatting"""
-    
+
     def __init__(self):
         self.mode = None
         self.is_execute_mode = False
         self.is_piped_input = False
         self.is_interactive = False
-        
+
     def set_mode(self, is_execute_mode: bool = False, is_piped_input: bool = False, is_interactive: bool = False):
         """Set the output mode"""
         self.is_execute_mode = is_execute_mode
         self.is_piped_input = is_piped_input
         self.is_interactive = is_interactive
-        
-    def format_success_output(self, result: Any, mql_query: Dict, execution_time: float, 
+
+    def format_success_output(self, result: Any, mql_query: Dict, execution_time: float,
                             parsed_sql: Optional[Dict] = None, vertical_format: bool = False) -> None:
         """Format successful query output in MariaDB-compatible format"""
-        
+
         # Handle USE database result
         if mql_query.get('operation') == 'use_database' and isinstance(result, str):
             if not self.is_piped_input:
                 print(result)
             return
-        
+
         # Handle COUNT results
         if mql_query.get('operation') == 'count' and isinstance(result, int):
             count_result = [{'COUNT(*)': result}]
             self._display_table_data(count_result, parsed_sql, execution_time, vertical_format)
             return
-        
+
         if isinstance(result, list):
             if result:
                 # Display as MySQL-style table
@@ -155,17 +160,17 @@ class MariaDBFormatter:
             # Handle non-query results (INSERT, UPDATE, DELETE)
             if not self.is_execute_mode:
                 self._format_modification_result(result, execution_time)
-    
+
     def format_error_output(self, error_msg: str, sql_query: str = None) -> None:
         """Format error output in MariaDB-compatible format"""
-        
+
         # In execute mode, echo the query before showing error (like MariaDB)
         if self.is_execute_mode and sql_query:
             print("-" * 14)
             print(sql_query)
             print("-" * 14)
             print()
-        
+
         # Format the error message
         if error_msg.startswith("ERROR"):
             # Already formatted as MySQL/MariaDB error - add line number for execute mode
@@ -177,12 +182,12 @@ class MariaDBFormatter:
         else:
             # Generic error, add ERROR prefix
             print(f"ERROR: {error_msg}", file=sys.stderr)
-    
-    def _display_table_data(self, results: List[Dict], parsed_sql: Optional[Dict], 
-                          execution_time: float, vertical_format: bool = False, 
+
+    def _display_table_data(self, results: List[Dict], parsed_sql: Optional[Dict],
+                          execution_time: float, vertical_format: bool = False,
                           is_show_operation: bool = False) -> None:
         """Display table data in appropriate format based on mode"""
-        
+
         # Determine output format based on mode
         if self.is_piped_input:
             # Tab-separated format for piped input (matches MariaDB behavior)
@@ -190,18 +195,18 @@ class MariaDBFormatter:
         else:
             # Table format for execute mode and interactive mode
             self._display_mysql_table(results, parsed_sql, execution_time, is_show_operation)
-    
+
     def _display_tab_format(self, results: List[Dict], parsed_sql: Optional[Dict]) -> None:
         """Display results in tab-separated format (for piped output, matches MariaDB)"""
         if not results:
             return
-        
+
         # Get column order
         columns = self._get_column_order(results, parsed_sql)
-        
+
         # Print header (column names)
         print('\t'.join(columns))
-        
+
         # Print data rows
         for doc in results:
             row_values = []
@@ -211,52 +216,52 @@ class MariaDBFormatter:
                 formatted_value = format_value(value, col)
                 row_values.append(formatted_value)
             print('\t'.join(row_values))
-    
-    def _display_mysql_table(self, results: List[Dict], parsed_sql: Optional[Dict], 
+
+    def _display_mysql_table(self, results: List[Dict], parsed_sql: Optional[Dict],
                            execution_time: float, is_show_operation: bool = False) -> None:
         """Display results in MySQL/MariaDB table format with borders"""
         if not results:
             return
-        
+
         # Get column order
         columns = self._get_column_order(results, parsed_sql)
-        
+
         if not columns:
             return
-        
+
         # Calculate column widths
         col_widths = {}
         for col in columns:
             col_widths[col] = len(col)  # Start with header width
-        
+
         # Check data widths
         for doc in results:
             for col in columns:
                 value = doc.get(col, '')
                 formatted_value = format_value(value, col)
                 col_widths[col] = max(col_widths[col], len(formatted_value))
-        
+
         # Print table
         self._print_table_border(columns, col_widths)
         self._print_table_header(columns, col_widths)
         self._print_table_border(columns, col_widths)
-        
+
         for doc in results:
             self._print_table_row(doc, columns, col_widths)
-        
+
         self._print_table_border(columns, col_widths)
-        
+
         # Print summary (only in interactive mode, not execute mode)
         if not self.is_execute_mode:
             row_count = len(results)
             row_text = "row" if row_count == 1 else "rows"
             print(f"{row_count} {row_text} in set ({execution_time:.2f} sec)")
             print()
-    
+
     def _get_column_order(self, results: List[Dict], parsed_sql: Optional[Dict]) -> List[str]:
         """Get the proper column order based on the query"""
         query_columns = parsed_sql.get('columns', []) if parsed_sql else []
-        
+
         if query_columns and query_columns != ['*']:
             columns = []
             for col in query_columns:
@@ -276,7 +281,7 @@ class MariaDBFormatter:
                 else:
                     # Handle string columns (including aliases like "1 as test")
                     col_str = str(col)
-                    
+
                     # Check if this is an alias expression (e.g., "1 as test")
                     if ' as ' in col_str.lower():
                         # Extract the alias part (case-insensitive)
@@ -294,7 +299,7 @@ class MariaDBFormatter:
                             columns.append(col_without_table)
                         else:
                             columns.append(col_str)
-            
+
             # Only include columns that actually exist in the results
             columns = [col for col in columns if any(col in doc for doc in results)]
         else:
@@ -313,9 +318,9 @@ class MariaDBFormatter:
                     else:
                         all_columns.add(key)
             columns = list(all_columns)
-        
+
         return columns
-    
+
     def _print_table_border(self, columns: List[str], col_widths: Dict[str, int]) -> None:
         """Print table border line"""
         border_parts = []
@@ -323,7 +328,7 @@ class MariaDBFormatter:
             border_parts.append('+' + '-' * (col_widths[col] + 2))
         border_parts.append('+')
         print(''.join(border_parts))
-    
+
     def _print_table_header(self, columns: List[str], col_widths: Dict[str, int]) -> None:
         """Print table header"""
         header_parts = []
@@ -331,14 +336,14 @@ class MariaDBFormatter:
             header_parts.append(f"| {col:<{col_widths[col]}} ")
         header_parts.append('|')
         print(''.join(header_parts))
-    
+
     def _print_table_row(self, doc: Dict, columns: List[str], col_widths: Dict[str, int]) -> None:
         """Print a single table row"""
         row_parts = []
         for col in columns:
             value = doc.get(col, '')
             formatted_value = format_value(value, col)
-            
+
             # Right-align numbers, left-align everything else
             if isinstance(value, (int, float)) and not isinstance(value, bool):
                 row_parts.append(f"| {formatted_value:>{col_widths[col]}} ")
@@ -346,7 +351,7 @@ class MariaDBFormatter:
                 row_parts.append(f"| {formatted_value:<{col_widths[col]}} ")
         row_parts.append('|')
         print(''.join(row_parts))
-    
+
     def _display_vertical_format(self, results: List[Dict], execution_time: float) -> None:
         """Display results in vertical format (\\G)"""
         for i, doc in enumerate(results, 1):
@@ -355,13 +360,13 @@ class MariaDBFormatter:
                 if key != '_id':  # Exclude MongoDB's _id
                     formatted_value = format_value(value, key)
                     print(f"{key}: {formatted_value}")
-        
+
         if not self.is_execute_mode:
             row_count = len(results)
             row_text = "row" if row_count == 1 else "rows"
             print(f"{row_count} {row_text} in set ({execution_time:.2f} sec)")
             print()
-    
+
     def _format_modification_result(self, result: Any, execution_time: float) -> None:
         """Format INSERT/UPDATE/DELETE results"""
         if isinstance(result, dict):

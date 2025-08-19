@@ -19,154 +19,218 @@ from .enhanced_aggregate_types import (
 
 class EnhancedAggregateFunctionMapper:
     """Maps enhanced aggregate operations for integration with core translator"""
-    
+
     def __init__(self):
         self.parser = EnhancedAggregateParser()
         self.translator = EnhancedAggregateTranslator()
-    
+
     def has_enhanced_aggregate_functions(self, sql: str) -> bool:
         """Check if SQL contains enhanced aggregate functions"""
         return self.parser.has_enhanced_aggregate_functions(sql)
-    
+
     def parse_and_translate_enhanced_aggregates(self, sql: str, base_pipeline: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[EnhancedAggregateOperation]]:
         """Parse SQL for enhanced aggregate operations and integrate with pipeline"""
         operations = self.parser.parse_sql(sql)
-        
+
         if not operations:
             return base_pipeline, []
-        
+
         # Build enhanced pipeline with aggregate operations
         enhanced_pipeline = self.translator.translate_operations(operations, base_pipeline)
-        
+
         return enhanced_pipeline, operations
-    
+
     def get_group_concat_projections(self, sql: str) -> Dict[str, Any]:
         """Get projection mappings for GROUP_CONCAT in SELECT expressions"""
         operations = self.parser.parse_sql(sql)
         group_concat_operations = [op for op in operations if isinstance(op.function, GroupConcatFunction)]
-        
+
         if not group_concat_operations:
             return {}
-        
+
         projections = {}
         for operation in group_concat_operations:
             field_name = f"group_concat_{operation.function.field}"
             projections[field_name] = f"${field_name}"
-        
+
         return projections
-    
+
     def get_statistical_projections(self, sql: str) -> Dict[str, Any]:
         """Get projection mappings for statistical functions in SELECT expressions"""
         operations = self.parser.parse_sql(sql)
         statistical_operations = [op for op in operations if isinstance(op.function, StatisticalFunction)]
-        
+
         if not statistical_operations:
             return {}
-        
+
         projections = {}
         for operation in statistical_operations:
             func_name = operation.function.function_type.value
             field_name = f"{func_name.lower()}_{operation.function.field}"
             projections[field_name] = operation.function.to_mongodb_aggregation()
-        
+
         return projections
-    
+
     def get_bitwise_projections(self, sql: str) -> Dict[str, Any]:
         """Get projection mappings for bitwise functions in SELECT expressions"""
         operations = self.parser.parse_sql(sql)
         bitwise_operations = [op for op in operations if isinstance(op.function, BitwiseFunction)]
-        
+
         if not bitwise_operations:
             return {}
-        
+
         projections = {}
         for operation in bitwise_operations:
             func_name = operation.function.function_type.value
             field_name = f"{func_name.lower()}_{operation.function.field}"
             projections[field_name] = operation.function.to_mongodb_aggregation()
-        
+
         return projections
-    
+
     def translate_group_concat_simple(self, field: str, separator: str = ",", distinct: bool = False) -> List[Dict[str, Any]]:
         """Simple GROUP_CONCAT translation helper"""
         return self.translator.translate_group_concat_simple(field, separator, distinct)
-    
+
     def is_supported_enhanced_aggregate(self, function_name: str) -> bool:
         """Check if the function is a supported enhanced aggregate function"""
         return is_enhanced_aggregate_function(function_name)
-    
+
     def get_supported_functions(self) -> List[str]:
         """Get list of supported enhanced aggregate functions"""
         return [
-            'GROUP_CONCAT', 
-            'STDDEV_POP', 'STDDEV_SAMP', 
-            'VAR_POP', 'VAR_SAMP',
-            'BIT_AND', 'BIT_OR', 'BIT_XOR'
+            # GROUP_CONCAT with ORDER BY and SEPARATOR support
+            # (VAR functions are handled by core translator statistical aggregate)
         ]
-    
+
     def map_enhanced_aggregate_function(self, function_name: str, args: str, original_call: str) -> Optional[Dict[str, Any]]:
         """Map a specific enhanced aggregate function call to MongoDB operations"""
         function_name_upper = function_name.upper()
-        
+
         if function_name_upper == 'GROUP_CONCAT':
             return self._map_group_concat(args, original_call)
-        elif function_name_upper in ['STDDEV_POP', 'STDDEV_SAMP', 'VAR_POP', 'VAR_SAMP']:
-            return self._map_statistical_function(function_name_upper, args, original_call)
-        elif function_name_upper in ['BIT_AND', 'BIT_OR', 'BIT_XOR']:
-            return self._map_bitwise_function(function_name_upper, args, original_call)
-        
+        # VAR functions are now handled by core translator
+
         return None
-    
+
     def _map_group_concat(self, args: str, original_call: str) -> Dict[str, Any]:
         """Map GROUP_CONCAT function"""
-        # Extract field name from args  
+        # Extract field name from args
         field = self._extract_field_from_args(args)
-        
-        # Return GROUP_CONCAT pipeline stages
+
+        # Return in the simple format expected by core translator
         return {
-            "type": "group_concat",
-            "field": field,
-            "pipeline": self.translator.translate_group_concat_simple(field)
+            'operator': '$push',  # Use $push to collect values
+            'value': f'${field}',
+            'stage': '$group',
+            'post_process': {
+                'type': 'group_concat',
+                'separator': ',',  # Default separator
+                'field': field
+            }
         }
-    
+
     def _map_statistical_function(self, function_name: str, args: str, original_call: str) -> Dict[str, Any]:
         """Map statistical functions with MariaDB precision in the expected format"""
         # Extract field name from args
         field = self._extract_field_from_args(args)
-        
-        # Create function type and get MongoDB expression with precision
-        from .enhanced_aggregate_types import EnhancedAggregateFunctionType
-        func_type = EnhancedAggregateFunctionType(function_name)
-        
-        # Return in the format expected by the core translator
-        return {
-            'operator': self.translator.get_statistical_function_expression(func_type, field),
-            'value': f'${field}',  # This will be ignored since we use the full expression in operator
-            'stage': '$group'
-        }
-    
+
+        # Return the simple format expected by core translator, with basic MongoDB operators
+        function_name_upper = function_name.upper()
+
+        if function_name_upper == 'STDDEV_POP':
+            return {
+                'operator': '$stdDevPop',
+                'value': f'${field}',
+                'stage': '$group',
+                'precision': 6  # Add precision as metadata for post-processing
+            }
+        elif function_name_upper == 'STDDEV_SAMP':
+            return {
+                'operator': '$stdDevSamp',
+                'value': f'${field}',
+                'stage': '$group',
+                'precision': 6
+            }
+        elif function_name_upper == 'VAR_POP':
+            return {
+                'operator': '$stdDevPop',  # Use stddev and square it in post-processing
+                'value': f'${field}',
+                'stage': '$group',
+                'precision': 6,
+                'post_process': 'square'  # Indicate this needs to be squared
+            }
+        elif function_name_upper == 'VAR_SAMP':
+            return {
+                'operator': '$stdDevSamp',  # Use stddev and square it in post-processing
+                'value': f'${field}',
+                'stage': '$group',
+                'precision': 6,
+                'post_process': 'square'
+            }
+        else:
+            raise ValueError(f"Unsupported statistical function: {function_name}")
+
     def _map_bitwise_function(self, function_name: str, args: str, original_call: str) -> Dict[str, Any]:
         """Map bitwise functions"""
         # Extract field name from args
         field = self._extract_field_from_args(args)
-        
-        # Create function type and get MongoDB expression
-        from .enhanced_aggregate_types import EnhancedAggregateFunctionType
-        func_type = EnhancedAggregateFunctionType(function_name)
-        
-        return {
-            "type": "bitwise",
-            "function": function_name,
-            "field": field,
-            "expression": self.translator.get_bitwise_function_expression(func_type, field)
-        }
-    
+
+        # Return the simple format expected by core translator
+        function_name_upper = function_name.upper()
+
+        if function_name_upper == 'BIT_AND':
+            return {
+                'operator': '$bitAnd',
+                'value': f'${field}',
+                'stage': '$group'
+            }
+        elif function_name_upper == 'BIT_OR':
+            return {
+                'operator': '$bitOr',
+                'value': f'${field}',
+                'stage': '$group'
+            }
+        elif function_name_upper == 'BIT_XOR':
+            return {
+                'operator': '$bitXor',
+                'value': f'${field}',
+                'stage': '$group'
+            }
+        else:
+            raise ValueError(f"Unsupported bitwise function: {function_name}")
+
+    def _map_variance_function(self, function_name: str, args: str, original_call: str) -> Dict[str, Any]:
+        """Map variance functions using a direct calculation approach"""
+        # Extract field name from args
+        field = self._extract_field_from_args(args)
+
+        # For variance functions, we need to calculate stddev squared with precision
+        # Since core translator can't handle complex expressions, we'll use a direct calculation
+        if function_name == 'VAR_POP':
+            # Population variance = (stddev_pop)^2 rounded to 6 decimal places
+            return {
+                'operator': '$stdDevPop',
+                'value': f'${field}',
+                'stage': '$group',
+                'post_process': 'square_and_round_6'  # Custom post-processing marker
+            }
+        elif function_name == 'VAR_SAMP':
+            # Sample variance = (stddev_samp)^2 rounded to 6 decimal places
+            return {
+                'operator': '$stdDevSamp',
+                'value': f'${field}',
+                'stage': '$group',
+                'post_process': 'square_and_round_6'  # Custom post-processing marker
+            }
+        else:
+            raise ValueError(f"Unsupported variance function: {function_name}")
+
     def _extract_field_from_args(self, args: str) -> str:
         """Extract field name from function arguments"""
         # Handle different argument formats
         if isinstance(args, list) and len(args) > 0:
             return str(args[0])
-        
+
         # Handle string representation of list: "['fieldname']"
         args_str = str(args).strip()
         if args_str.startswith("['") and args_str.endswith("']"):

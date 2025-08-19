@@ -6,10 +6,10 @@ from typing import Dict, List, Any, Optional
 
 class AggregateFunctionMapper:
     """Maps SQL aggregate functions to MongoDB aggregation pipeline operators"""
-    
+
     def __init__(self):
         self.function_map = self._build_aggregate_map()
-    
+
     def _build_aggregate_map(self) -> Dict[str, Dict[str, Any]]:
         """Build the aggregate function mapping dictionary"""
         return {
@@ -74,20 +74,6 @@ class AggregateFunctionMapper:
                 'type': 'aggregate',
                 'description': 'Calculate sample standard deviation'
             },
-            'VAR_POP': {
-                'mongodb': '$stdDevPop',
-                'stage': '$group',
-                'type': 'aggregate',
-                'description': 'Calculate population variance (stddev squared)',
-                'transform': 'square'
-            },
-            'VAR_SAMP': {
-                'mongodb': '$stdDevSamp',
-                'stage': '$group',
-                'type': 'aggregate',
-                'description': 'Calculate sample variance (stddev squared)',
-                'transform': 'square'
-            },
             'GROUP_CONCAT': {
                 'mongodb': '$push',
                 'stage': '$group',
@@ -121,16 +107,16 @@ class AggregateFunctionMapper:
                 'transform': 'square'  # Special handling needed
             }
         }
-    
+
     def map_function(self, function_name: str, field: str = None, args: List[Any] = None) -> Dict[str, Any]:
         """Map SQL aggregate function to MongoDB aggregation operator"""
         func_upper = function_name.upper()
-        
+
         if func_upper not in self.function_map:
             raise ValueError(f"Unsupported aggregate function: {function_name}")
-        
+
         mapping = self.function_map[func_upper]
-        
+
         # Handle COUNT special cases
         if func_upper == 'COUNT':
             if field == '*' or field is None:
@@ -164,53 +150,16 @@ class AggregateFunctionMapper:
                     'post_process': mapping.get('post_process'),
                     'separator': ','  # Default separator
                 }
-            
-        # Handle variance functions (need to square stddev result with rounding)
-        if func_upper in ['VAR_POP', 'VAR_SAMP', 'VARIANCE']:
-            if field:
-                if func_upper == 'VAR_POP':
-                    # MongoDB doesn't have VAR_POP, calculate as (STDDEV_POP)^2 with MariaDB precision
-                    return {
-                        'operator': {"$round": [{"$pow": [{"$stdDevPop": f"${field}"}, 2]}, 6]},
-                        'value': f'${field}',
-                        'stage': mapping['stage']
-                    }
-                elif func_upper == 'VAR_SAMP':
-                    # MongoDB doesn't have VAR_SAMP, calculate as (STDDEV_SAMP)^2 with MariaDB precision
-                    return {
-                        'operator': {"$round": [{"$pow": [{"$stdDevSamp": f"${field}"}, 2]}, 6]},
-                        'value': f'${field}',
-                        'stage': mapping['stage']
-                    }
-                else:
-                    return {
-                        'operator': mapping['mongodb'],
-                        'value': f'${field}',
-                        'stage': mapping['stage'],
-                        'transform': mapping.get('transform')
-                    }
 
-        # Handle STDDEV functions with MariaDB precision (6 decimal places)
+        # Handle STDDEV functions with simple operators
         if func_upper in ['STDDEV_POP', 'STDDEV_SAMP', 'STDDEV']:
             if field:
-                if func_upper == 'STDDEV_POP':
-                    return {
-                        'operator': {"$round": [{"$stdDevPop": f"${field}"}, 6]},
-                        'value': f'${field}',
-                        'stage': mapping['stage']
-                    }
-                elif func_upper == 'STDDEV_SAMP':
-                    return {
-                        'operator': {"$round": [{"$stdDevSamp": f"${field}"}, 6]},
-                        'value': f'${field}',
-                        'stage': mapping['stage']
-                    }
-                else:  # STDDEV
-                    return {
-                        'operator': {"$round": [{"$stdDevPop": f"${field}"}, 6]},
-                        'value': f'${field}',
-                        'stage': mapping['stage']
-                    }
+                return {
+                    'operator': mapping['mongodb'],  # Simple $stdDevPop or $stdDevSamp
+                    'value': f'${field}',
+                    'stage': mapping['stage'],
+                    'precision': 6  # Mark for rounding to 6 decimal places
+                }
 
         # Handle other aggregate functions
         if field:
@@ -219,13 +168,13 @@ class AggregateFunctionMapper:
                 'value': f'${field}',
                 'stage': mapping['stage']
             }
-        
+
         raise ValueError(f"Field required for aggregate function: {function_name}")
-    
+
     def is_aggregate_function(self, function_name: str) -> bool:
         """Check if function is an aggregate function"""
         return function_name.upper() in self.function_map
-    
+
     def get_supported_functions(self) -> List[str]:
         """Get list of supported aggregate functions"""
         return list(self.function_map.keys())

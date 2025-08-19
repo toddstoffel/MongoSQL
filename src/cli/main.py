@@ -49,14 +49,59 @@ def get_mariadb_formatter():
     return _mariadb_formatter
 
 def ensure_utils_imported():
-    """Ensure utils are imported"""
-    global _utils_imported, get_table_columns, format_value, is_numeric_column
-    if not _utils_imported:
-        from ..utils.schema import get_table_columns, format_value, is_numeric_column
-        globals()['get_table_columns'] = get_table_columns
-        globals()['format_value'] = format_value
-        globals()['is_numeric_column'] = is_numeric_column
-        _utils_imported = True
+    """Database-agnostic formatting - no hardcoded schemas needed"""
+    global _utils_imported
+    _utils_imported = True  # No schema dependencies needed
+
+def format_value(column_name, value):
+    """Generic value formatting without hardcoded schemas"""
+    if value is None:
+        return ''
+
+    # Apply MariaDB-compatible precision for statistical functions
+    if isinstance(value, (int, float)) and ('STDDEV' in column_name.upper() or 'VAR_' in column_name.upper()):
+        # Round to 6 decimal places to match MariaDB precision
+        try:
+            formatted = f"{float(value):.6f}".rstrip('0').rstrip('.')
+            return formatted
+        except:
+            pass
+
+    # Format numeric values consistently
+    if isinstance(value, float):
+        # For monetary values, use 2 decimal places if they look like money
+        if any(keyword in column_name.lower() for keyword in ['price', 'cost', 'amount', 'credit', 'limit']):
+            return f"{value:.2f}"
+        # For other floats, remove unnecessary decimals
+        if value == int(value):
+            return str(int(value))
+        return str(value)
+
+    return str(value)
+
+def is_numeric_column(column_name, value=None):
+    """Check if a column should be right-aligned (numeric) - generic detection"""
+    # Check if the value itself is numeric
+    if value is not None:
+        try:
+            if isinstance(value, (int, float)):
+                return True
+            elif isinstance(value, str):
+                # Check if string represents a number
+                if value.replace('.', '').replace('-', '').isdigit():
+                    return True
+                try:
+                    float(value)
+                    return True
+                except ValueError:
+                    pass
+        except:
+            pass
+
+    # Check column name patterns that suggest numeric data
+    numeric_patterns = ['number', 'id', 'code', 'quantity', 'price', 'amount', 'limit', 'count']
+    column_lower = column_name.lower()
+    return any(pattern in column_lower for pattern in numeric_patterns)
 
 # Load environment variables only when needed
 load_dotenv()
@@ -71,45 +116,45 @@ load_dotenv()
 @click.option('--batch', is_flag=True, help='Run in batch mode (non-interactive)')
 def main(database, host, port, username, password, execute, batch):
     """MongoSQL - A command-line client that translates SQL to MongoDB queries
-    
+
     DATABASE is the name of the database to connect to (optional)
     """
-    
+
     # Check if input is coming from a pipe (like echo | mongosql)
     is_piped_input = not sys.stdin.isatty()
-    
+
     # Get connection parameters
     mongo_host = host or os.getenv('MONGO_HOST') or os.getenv('MONGODB_HOST', 'localhost')
     mongo_port = int(port or os.getenv('MONGO_PORT') or os.getenv('MONGODB_PORT', 27017))
     mongo_db = database or os.getenv('MONGO_DATABASE') or os.getenv('MONGODB_DATABASE')
     mongo_user = username or os.getenv('MONGO_USERNAME') or os.getenv('MONGODB_USERNAME')
     mongo_pass = os.getenv('MONGO_PASSWORD') or os.getenv('MONGODB_PASSWORD')
-    
+
     if password:
         mongo_pass = getpass.getpass("Enter password: ")
-    
+
     # Database is optional - can be None for initial connection
-    
+
     try:
         # Initialize components using lazy loading
         MongoDBClient = get_mongodb_client()
         db_client = MongoDBClient(
             host=mongo_host,
-            port=mongo_port, 
+            port=mongo_port,
             database=mongo_db,
             username=mongo_user,
             password=mongo_pass
         )
         sql_parser = get_sql_parser()
         translator = get_sql_translator()
-        
+
         # Connect to MongoDB (without requiring a database)
         db_client.connect()
-        
+
         # If a database was specified, switch to it
         if mongo_db:
             db_client.switch_database(mongo_db)
-        
+
         if execute:
             # Execute single statement and exit
             execute_statement(execute, sql_parser, translator, db_client, silent=False, is_execute_mode=True)
@@ -121,7 +166,7 @@ def main(database, host, port, username, password, execute, batch):
             if not is_piped_input:
                 print_welcome()
             run_interactive_mode(sql_parser, translator, db_client)
-            
+
     except Exception as e:
         error_msg = str(e)
         if error_msg.startswith("ERROR"):
@@ -146,7 +191,7 @@ def main(database, host, port, username, password, execute, batch):
     finally:
         if 'db_client' in locals():
             db_client.close()
-    
+
     return 0
 
 def print_welcome():
@@ -162,10 +207,10 @@ def print_welcome():
 
 def execute_statement(sql, parser, translator, db_client, vertical_format=False, silent=False, is_execute_mode=False):
     """Execute a single SQL statement"""
-    
+
     # Get the MariaDB formatter
     formatter = get_mariadb_formatter()
-    
+
     # Set the formatter mode
     is_piped_input = silent  # silent mode indicates piped input
     is_interactive = not is_execute_mode and not is_piped_input
@@ -174,34 +219,34 @@ def execute_statement(sql, parser, translator, db_client, vertical_format=False,
         is_piped_input=is_piped_input,
         is_interactive=is_interactive
     )
-    
+
     try:
         # Remove trailing semicolon if present
         original_sql = sql
         sql = sql.rstrip(';')
-        
+
         # Check for \G terminator (vertical format)
         if sql.endswith('\\G'):
             sql = sql[:-2].strip()
             vertical_format = True
         elif sql.endswith('\\g'):
             sql = sql[:-2].strip()
-        
+
         # Start timing
         start_time = time.time()
-        
+
         # Parse SQL
         parsed = parser.parse(sql)
-        
+
         # Add original SQL to parsed result for ORDER BY processing
         if isinstance(parsed, dict):
             parsed['original_sql'] = sql
-        
+
         # Check if we need enhanced parsing for REGEXP expressions
         needs_enhanced_parsing = False
         if hasattr(parser, 'has_enhanced_expressions'):
             needs_enhanced_parsing = parser.has_enhanced_expressions(sql)
-        
+
         # Use enhanced parsing if needed and available
         if needs_enhanced_parsing and hasattr(parser, 'parse_with_expressions'):
             try:
@@ -211,24 +256,24 @@ def execute_statement(sql, parser, translator, db_client, vertical_format=False,
             except Exception:
                 # If enhanced parsing fails, continue with standard parsing
                 pass
-        
+
         # Choose translator method based on parsed content
         if hasattr(translator, 'can_use_enhanced_translation') and translator.can_use_enhanced_translation(parsed):
             mql_query = translator.translate_with_expressions(parsed)
         else:
             # Translate to MQL using standard method
             mql_query = translator.translate(parsed)
-        
+
         # Execute query
         result = db_client.execute_query(mql_query)
-        
+
         # Calculate execution time
         execution_time = time.time() - start_time
-        
+
         # Format successful output using the modular formatter
         if not silent:
             formatter.format_success_output(result, mql_query, execution_time, parsed, vertical_format)
-        
+
     except Exception as e:
         if not silent:
             formatter.format_error_output(str(e), original_sql)
@@ -242,11 +287,11 @@ def run_batch_mode(parser, translator, db_client, silent=False):
 
 def run_interactive_mode(parser, translator, db_client):
     """Run in interactive mode"""
-    
+
     # Configure readline for command history and arrow keys
     readline.parse_and_bind('tab: complete')
     readline.parse_and_bind('set editing-mode emacs')
-    
+
     # Set up history file
     history_file = os.path.expanduser('~/.mongosql_history')
     try:
@@ -255,21 +300,21 @@ def run_interactive_mode(parser, translator, db_client):
         readline.set_history_length(1000)
     except FileNotFoundError:
         pass
-    
+
     try:
         while True:
             try:
                 # Get current database name for prompt
                 current_db = db_client.database_name or "none"
-                
+
                 # Get input with MySQL-style prompt showing database
                 sql = input(f"mongosql [{current_db}]> ")
-                
+
                 if not sql:
                     continue
-                    
+
                 sql = sql.strip()
-                
+
                 # Handle \g and \G terminators (equivalent to semicolon in MySQL)
                 vertical_format = False
                 if sql.endswith('\\G'):
@@ -280,7 +325,7 @@ def run_interactive_mode(parser, translator, db_client):
                 elif sql in ['\\G', '\\g']:
                     # Just \G or \g by itself - nothing to execute
                     continue
-                
+
                 # Handle special commands
                 if sql.lower() in ['quit', 'exit', 'q', '\\q']:
                     print("Bye")
@@ -288,7 +333,7 @@ def run_interactive_mode(parser, translator, db_client):
                 elif sql.lower() in ['help', 'help;', 'help\\g', 'help\\G']:
                     show_help()
                     continue
-                elif sql.lower() in ['show tables', 'show tables;', 'show tables\\g', 'show tables\\G', 
+                elif sql.lower() in ['show tables', 'show tables;', 'show tables\\g', 'show tables\\G',
                                      'show collections', 'show collections;', 'show collections\\g', 'show collections\\G']:
                     show_collections(db_client)
                     continue
@@ -304,10 +349,10 @@ def run_interactive_mode(parser, translator, db_client):
                 elif sql == '\\c':
                     print("Query buffer cleared.")
                     continue
-                
+
                 # Execute SQL statement
                 execute_statement(sql, parser, translator, db_client, vertical_format)
-                
+
             except KeyboardInterrupt:
                 print("\nQuery aborted.")
             except EOFError:
@@ -345,16 +390,16 @@ def show_collections(db_client):
             # Calculate proper column width
             db_name = db_client.database_name or 'db'
             header = f"Collections_in_{db_name}"
-            
+
             # Find the maximum width needed
             max_width = len(header)
             for collection in collections:
                 if len(collection) > max_width:
                     max_width = len(collection)
-            
+
             # Ensure minimum width
             max_width = max(max_width, 20)
-            
+
             # Print table with proper width
             border = '+' + '-' * (max_width + 2) + '+'
             print(border)
@@ -377,16 +422,16 @@ def show_databases(db_client):
         if databases:
             # Calculate proper column width
             header = "Database"
-            
+
             # Find the maximum width needed
             max_width = len(header)
             for database in databases:
                 if len(database) > max_width:
                     max_width = len(database)
-            
+
             # Ensure minimum width
             max_width = max(max_width, 20)
-            
+
             # Print table with proper width
             border = '+' + '-' * (max_width + 2) + '+'
             print(border)
@@ -410,7 +455,7 @@ def display_tab_format(results, query_columns=None):
     """Display results in tab-separated format (for piped output, matches MariaDB)"""
     if not results:
         return
-    
+
     # Determine column order - same logic as table format
     if query_columns and query_columns != ['*']:
         columns = []
@@ -431,7 +476,7 @@ def display_tab_format(results, query_columns=None):
             else:
                 # Handle string columns (including aliases like "1 as test")
                 col_str = str(col)
-                
+
                 # Check if this is an alias expression (e.g., "1 as test")
                 if ' as ' in col_str.lower():
                     # Extract the alias part (case-insensitive)
@@ -451,10 +496,10 @@ def display_tab_format(results, query_columns=None):
         for doc in results:
             all_columns.update(doc.keys())
         columns = list(all_columns)
-    
+
     # Print header (column names)
     print('\t'.join(columns))
-    
+
     # Print data rows
     for doc in results:
         row_values = []
@@ -470,18 +515,18 @@ def display_tab_format(results, query_columns=None):
 def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is_execute_mode=False, silent=False, query_columns=None, table_name=None):
     """Display results in MySQL/MariaDB table format"""
     ensure_utils_imported()  # Ensure utils are loaded
-    
+
     if not results:
         return
-    
+
     # Check if output should be tab-formatted (for piped input, matches MariaDB behavior)
     is_piped = silent
-    
+
     if is_piped:
         # Tab-separated format for piped output (matches MariaDB behavior)
         display_tab_format(results, query_columns)
         return
-    
+
     # If query_columns is provided (from SELECT statement), use that order
     if query_columns and query_columns != ['*']:
         # Use the exact column order from the SQL query
@@ -508,7 +553,7 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
             else:
                 # Handle string columns (including aliases like "1 as test")
                 col_str = str(col)
-                
+
                 # Check if this is an alias expression (e.g., "1 as test")
                 if ' as ' in col_str.lower():
                     # Extract the alias part (case-insensitive)
@@ -533,34 +578,19 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
             for key in doc.keys():
                 if key != '_id':  # Exclude MongoDB's _id
                     all_columns.add(key)
-        
-        # Try to get proper column order from schema
+
+        # Database-agnostic column ordering - no hardcoded schemas
+        # Use natural ordering: ID fields first, then alphabetical
         columns = list(all_columns)
-        
-        # If we know the table name from the query, use its schema
-        if table_name:
-            schema_cols = get_table_columns(table_name)
-            if schema_cols and all(col in schema_cols for col in all_columns):
-                # Order columns according to schema
-                columns = [col for col in schema_cols if col in all_columns]
-            else:
-                # If no schema match, use alphabetical order
-                columns = sorted(all_columns)
-        else:
-            # Fallback: try to match against known schemas
-            possible_tables = ['customers', 'products', 'orders', 'orderdetails', 'payments', 'employees', 'offices', 'productlines']
-            # Find the table that matches our columns best
-            for table in possible_tables:
-                schema_cols = get_table_columns(table)
-                if schema_cols and all(col in schema_cols for col in all_columns):
-                    # Order columns according to schema
-                    columns = [col for col in schema_cols if col in all_columns]
-                    break
-            
-            # If no schema match, use alphabetical order (fallback)
-            if not any(col in get_table_columns(table) for table in possible_tables for col in all_columns):
-                columns = sorted(all_columns)
-    
+
+        # Simple heuristic ordering without hardcoded schemas
+        id_columns = [col for col in columns if col.lower().endswith('number') or col.lower().endswith('id') or col.lower() == 'id']
+        name_columns = [col for col in columns if 'name' in col.lower()]
+        other_columns = [col for col in columns if col not in id_columns and col not in name_columns]
+
+        # Order: ID columns first, then name columns, then others alphabetically
+        columns = sorted(id_columns) + sorted(name_columns) + sorted(other_columns)
+
     # Calculate column widths
     col_widths = {}
     for col in columns:
@@ -573,19 +603,19 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
                 col_widths[col] = len(value)
         # Minimum width of 4
         col_widths[col] = max(col_widths[col], 4)
-    
+
     # Print top border
     print('+' + '+'.join('-' * (col_widths[col] + 2) for col in columns) + '+')
-    
+
     # Print header
     header_parts = []
     for col in columns:
         header_parts.append(f" {str(col).ljust(col_widths[col])} ")
     print('|' + '|'.join(header_parts) + '|')
-    
+
     # Print separator
     print('+' + '+'.join('-' * (col_widths[col] + 2) for col in columns) + '+')
-    
+
     # Print data rows
     for doc in results:
         row_parts = []
@@ -598,10 +628,10 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
                 # Left-align text columns
                 row_parts.append(f" {value.ljust(col_widths[col])} ")
         print('|' + '|'.join(row_parts) + '|')
-    
+
     # Print bottom border
     print('+' + '+'.join('-' * (col_widths[col] + 2) for col in columns) + '+')
-    
+
     # Print row count (but not for SHOW operations, execute mode, or silent mode)
     if not is_show_operation and not is_execute_mode and not silent:
         row_count = len(results)
@@ -615,14 +645,14 @@ def display_mysql_vertical(results, execution_time=0.0, is_execute_mode=False, s
     """Display results in MySQL/MariaDB vertical format (like \\G)"""
     if not results:
         return
-    
+
     for i, doc in enumerate(results, 1):
         print(f"*************************** {i}. row ***************************")
-        
+
         # Get all unique columns and find max column name width
         columns = list(doc.keys())
         max_col_width = max(len(str(col)) for col in columns) if columns else 0
-        
+
         for col in columns:
             value = doc.get(col)
             if value is None:
@@ -630,7 +660,7 @@ def display_mysql_vertical(results, execution_time=0.0, is_execute_mode=False, s
             else:
                 display_value = str(value)
             print(f"{str(col).rjust(max_col_width)}: {display_value}")
-    
+
     # Print row count for vertical format (but not in execute mode or silent mode)
     if not is_execute_mode and not silent:
         row_count = len(results)
