@@ -111,7 +111,14 @@ class EnhancedAggregateFunctionMapper:
         """Get list of supported enhanced aggregate functions"""
         return [
             # GROUP_CONCAT with ORDER BY and SEPARATOR support
-            # (VAR functions are handled by core translator statistical aggregate)
+            "GROUP_CONCAT",
+            # Statistical functions (VAR_POP and VAR_SAMP are handled by basic aggregate mapper)
+            "STDDEV_POP",
+            "STDDEV_SAMP",
+            # Bitwise aggregate functions
+            "BIT_AND",
+            "BIT_OR",
+            "BIT_XOR",
         ]
 
     def map_enhanced_aggregate_function(
@@ -122,7 +129,13 @@ class EnhancedAggregateFunctionMapper:
 
         if function_name_upper == "GROUP_CONCAT":
             return self._map_group_concat(args, original_call)
-        # VAR functions are now handled by core translator
+        elif function_name_upper in [
+            "STDDEV_POP",
+            "STDDEV_SAMP",
+        ]:
+            return self._map_statistical_function(function_name, args, original_call)
+        elif function_name_upper in ["BIT_AND", "BIT_OR", "BIT_XOR"]:
+            return self._map_bitwise_function(function_name, args, original_call)
 
         return None
 

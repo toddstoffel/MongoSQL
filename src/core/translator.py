@@ -98,9 +98,19 @@ class MongoSQLTranslator:
 
         # Check for aggregate functions
         if parsed_sql.get("columns"):
-            aggregate_result = self._handle_aggregate_functions(parsed_sql)
-            if aggregate_result:
-                return aggregate_result
+            # Only check for actual aggregate functions, not all functions
+            has_aggregates = False
+            for col in parsed_sql["columns"]:
+                if isinstance(col, dict) and "function" in col:
+                    func_name = col.get("function")
+                    if self._is_aggregate_function(func_name):
+                        has_aggregates = True
+                        break
+
+            if has_aggregates:
+                aggregate_result = self._handle_aggregate_functions(parsed_sql)
+                if aggregate_result:
+                    return aggregate_result
 
         # Check for subqueries - they require aggregation pipeline
         if parsed_sql.get("subqueries"):
@@ -114,6 +124,42 @@ class MongoSQLTranslator:
 
         # Handle column selection (projection)
         if parsed_sql.get("columns") and parsed_sql["columns"] != ["*"]:
+            # First analyze all columns to determine the query type
+            regular_columns = []
+            function_columns = []
+            aggregate_functions = []
+
+            for col in parsed_sql["columns"]:
+                if isinstance(col, dict) and "column" in col:
+                    regular_columns.append(col)
+                elif isinstance(col, dict) and "function" in col:
+                    func_name = col.get("function")
+                    if self._is_aggregate_function(func_name):
+                        aggregate_functions.append(col)
+                    else:
+                        function_columns.append(col)
+                else:
+                    # Regular column (string)
+                    regular_columns.append(col)
+
+            # Determine translation strategy based on column types
+            has_regular = len(regular_columns) > 0
+            has_functions = len(function_columns) > 0
+            has_aggregates = len(aggregate_functions) > 0
+
+            if has_aggregates:
+                # Any aggregate function requires aggregate pipeline
+                aggregate_result = self._handle_aggregate_functions(parsed_sql)
+                if aggregate_result:
+                    return aggregate_result
+            elif has_functions and not has_regular:
+                # ONLY non-aggregate functions - use function pipeline
+                return self._handle_function_with_from(parsed_sql)
+            elif has_functions and has_regular:
+                # MIXED: both regular columns and functions - use mixed pipeline
+                return self._handle_mixed_columns_with_from(parsed_sql)
+
+            # If we get here, it's only regular columns - continue with projection
             projection = {}
             has_id_column = False
             query_columns = []  # Track the order of columns in the query
@@ -777,8 +823,13 @@ class MongoSQLTranslator:
         # Check if field contains DISTINCT
         if "DISTINCT" in field.upper():
             use_distinct = True
-            # Remove DISTINCT from the field for further parsing
-            field = field.upper().replace("DISTINCT", "").strip()
+            # Remove DISTINCT from the field for further parsing (preserve case)
+            field_upper = field.upper()
+            distinct_pos = field_upper.find("DISTINCT")
+            # Reconstruct field without DISTINCT
+            before_distinct = field[:distinct_pos].strip()
+            after_distinct = field[distinct_pos + 8 :].strip()  # 8 = len('DISTINCT')
+            field = (before_distinct + " " + after_distinct).strip()
 
         # Check if field contains SEPARATOR clause
         if "SEPARATOR" in field.upper():
@@ -842,29 +893,93 @@ class MongoSQLTranslator:
         group_stage = {
             "$group": {
                 "_id": None,  # Group all documents together
-                "concat_result": (
-                    {"$addToSet": f"${actual_field}"}
-                    if use_distinct
-                    else {"$push": f"${actual_field}"}
-                ),
+                "concat_result": {"$push": f"${actual_field}"},
             }
         }
         pipeline.append(group_stage)
 
-        # If we're using DISTINCT with ORDER BY, we need to sort the array
-        if use_distinct and order_by_field:
-            pipeline.append(
-                {
-                    "$project": {
-                        "concat_result": {
+        # Handle DISTINCT and ORDER BY in a project stage
+        if use_distinct or order_by_field:
+            project_operations = {}
+
+            if use_distinct and order_by_field:
+                # For DISTINCT + ORDER BY: sort first, then remove duplicates
+                # Use a more sophisticated approach with reduce to handle trimming
+                project_operations["concat_result"] = {
+                    "$reduce": {
+                        "input": {
                             "$sortArray": {
                                 "input": "$concat_result",
                                 "sortBy": order_direction,
                             }
-                        }
+                        },
+                        "initialValue": [],
+                        "in": {
+                            "$let": {
+                                "vars": {"trimmed": {"$trim": {"input": "$$this"}}},
+                                "in": {
+                                    "$cond": [
+                                        {
+                                            "$in": [
+                                                "$$trimmed",
+                                                {
+                                                    "$map": {
+                                                        "input": "$$value",
+                                                        "in": {
+                                                            "$trim": {"input": "$$this"}
+                                                        },
+                                                    }
+                                                },
+                                            ]
+                                        },
+                                        "$$value",
+                                        {"$concatArrays": ["$$value", ["$$trimmed"]]},
+                                    ]
+                                },
+                            }
+                        },
                     }
                 }
-            )
+            elif use_distinct:
+                # DISTINCT only: remove duplicates with trimming
+                project_operations["concat_result"] = {
+                    "$reduce": {
+                        "input": "$concat_result",
+                        "initialValue": [],
+                        "in": {
+                            "$let": {
+                                "vars": {"trimmed": {"$trim": {"input": "$$this"}}},
+                                "in": {
+                                    "$cond": [
+                                        {
+                                            "$in": [
+                                                "$$trimmed",
+                                                {
+                                                    "$map": {
+                                                        "input": "$$value",
+                                                        "in": {
+                                                            "$trim": {"input": "$$this"}
+                                                        },
+                                                    }
+                                                },
+                                            ]
+                                        },
+                                        "$$value",
+                                        {"$concatArrays": ["$$value", ["$$trimmed"]]},
+                                    ]
+                                },
+                            }
+                        },
+                    }
+                }
+            elif order_by_field:
+                # ORDER BY only: just sort
+                project_operations["concat_result"] = {
+                    "$sortArray": {"input": "$concat_result", "sortBy": order_direction}
+                }
+
+            if project_operations:
+                pipeline.append({"$project": project_operations})
 
         # Convert array to comma-separated string
         # Use the original function call for display if provided
@@ -923,7 +1038,7 @@ class MongoSQLTranslator:
                 pipeline.append({"$match": match_filter})
 
         # Group stage
-        group_stage = {"$group": {"_id": None, f"{func_name}({field})": None}}
+        group_stage = {"$group": {"_id": None}}
 
         # Handle specific aggregate functions
         if func_name == "STDDEV_POP" or func_name == "STDDEV":
@@ -933,19 +1048,32 @@ class MongoSQLTranslator:
                 "$stdDevSamp": f"${field}"
             }
         elif func_name == "VAR_POP" or func_name == "VARIANCE":
-            group_stage["$group"][f"{func_name}({field})"] = {
-                "$pow": [{"$stdDevPop": f"${field}"}, 2]
-            }
+            # First calculate standard deviation, then square it in next stage
+            group_stage["$group"][f"_stddev_{field}"] = {"$stdDevPop": f"${field}"}
         elif func_name == "VAR_SAMP":
-            group_stage["$group"][f"{func_name}({field})"] = {
-                "$pow": [{"$stdDevSamp": f"${field}"}, 2]
-            }
+            # First calculate standard deviation, then square it in next stage
+            group_stage["$group"][f"_stddev_{field}"] = {"$stdDevSamp": f"${field}"}
         else:
             group_stage["$group"][f"{func_name}({field})"] = {
                 "$literal": f"Function {func_name} not supported"
             }
 
         pipeline.append(group_stage)
+
+        # Add additional stage for variance calculation if needed
+        if func_name in ["VAR_POP", "VARIANCE", "VAR_SAMP"]:
+            # Square the standard deviation to get variance
+            variance_stage = {
+                "$addFields": {
+                    f"{func_name}({field})": {
+                        "$multiply": [f"$_stddev_{field}", f"$_stddev_{field}"]
+                    }
+                }
+            }
+            pipeline.append(variance_stage)
+
+            # Remove the temporary stddev field
+            pipeline.append({"$project": {f"_stddev_{field}": 0}})
 
         # Add ORDER BY using modular parser (if applicable for aggregate results)
         if parsed_sql.get("order_by") or parsed_sql.get("original_sql"):
@@ -1084,60 +1212,57 @@ class MongoSQLTranslator:
                         args_str = col["args_str"]
                         args = []
                         if args_str:
-                            # Enhanced argument parsing - handle nested parentheses and quotes
-                            current_arg = ""
-                            in_quotes = False
-                            quote_char = None
-                            paren_depth = 0
+                            # Special handling for CASE functions - they have complex syntax, not comma-separated args
+                            if func_name.upper() == "CASE":
+                                # CASE functions take the entire expression as a single argument
+                                args = [args_str]
+                            else:
+                                # Enhanced argument parsing - handle nested parentheses and quotes
+                                current_arg = ""
+                                in_quotes = False
+                                quote_char = None
+                                paren_depth = 0
 
-                            for char in args_str:
-                                if char in ("'", '"') and not in_quotes:
-                                    in_quotes = True
-                                    quote_char = char
-                                    current_arg += char
-                                elif char == quote_char and in_quotes:
-                                    in_quotes = False
-                                    quote_char = None
-                                    current_arg += char
-                                elif char == "(" and not in_quotes:
-                                    paren_depth += 1
-                                    current_arg += char
-                                elif char == ")" and not in_quotes:
-                                    paren_depth -= 1
-                                    current_arg += char
-                                elif char == "," and not in_quotes and paren_depth == 0:
-                                    # Only split on commas at the top level (not inside parentheses)
+                                for char in args_str:
+                                    if char in ("'", '"') and not in_quotes:
+                                        in_quotes = True
+                                        quote_char = char
+                                        current_arg += char
+                                    elif char == quote_char and in_quotes:
+                                        in_quotes = False
+                                        quote_char = None
+                                        current_arg += char
+                                    elif char == "(" and not in_quotes:
+                                        paren_depth += 1
+                                        current_arg += char
+                                    elif char == ")" and not in_quotes:
+                                        paren_depth -= 1
+                                        current_arg += char
+                                    elif (
+                                        char == ","
+                                        and not in_quotes
+                                        and paren_depth == 0
+                                    ):
+                                        # Only split on commas at the top level (not inside parentheses)
+                                        args.append(current_arg.strip())
+                                        current_arg = ""
+                                    else:
+                                        current_arg += char
+
+                                # Add the last argument
+                                if current_arg.strip():
                                     args.append(current_arg.strip())
-                                    current_arg = ""
-                                else:
-                                    current_arg += char
-
-                            # Add the last argument
-                            if current_arg.strip():
-                                args.append(current_arg.strip())
 
                         # Convert numeric arguments for better type handling
                         converted_args = []
                         for arg in args:
-                            # Check if this is a conditional function that needs quoted string preservation
-                            preserve_quotes = func_name.upper() in [
-                                "IF",
-                                "CASE",
-                                "COALESCE",
-                                "NULLIF",
-                            ]
-
-                            # Handle quoted strings based on function type
+                            # Handle quoted strings - remove quotes for simple processing
                             if (arg.startswith("'") and arg.endswith("'")) or (
                                 arg.startswith('"') and arg.endswith('"')
                             ):
-                                if preserve_quotes:
-                                    # Keep as quoted string for conditional functions
-                                    converted_args.append(arg)
-                                    continue
-                                else:
-                                    # Remove quotes for other functions (string, math, etc.)
-                                    arg = arg[1:-1]
+                                # Remove quotes for datetime and simple functions
+                                converted_args.append(arg[1:-1])
+                                continue
 
                             # Check if it's NULL literal
                             if arg.upper() == "NULL":
@@ -1223,12 +1348,59 @@ class MongoSQLTranslator:
                         func_call = self._parse_function_call(col_stripped)
                         if func_call:
                             func_name = func_call["function"]
-                            args = func_call.get("args", [])
+                            raw_args = func_call.get("args", [])
+
+                            # Process arguments to distinguish literals from field references
+                            processed_args = []
+                            for arg in raw_args:
+                                # Check if this is a conditional function that needs quoted string preservation
+                                preserve_quotes = func_name.upper() in [
+                                    "IF",
+                                    "CASE",
+                                    "COALESCE",
+                                    "NULLIF",
+                                ]
+
+                                # Handle quoted strings
+                                if (arg.startswith("'") and arg.endswith("'")) or (
+                                    arg.startswith('"') and arg.endswith('"')
+                                ):
+                                    if preserve_quotes:
+                                        processed_args.append(arg)
+                                    else:
+                                        # Mark as literal string
+                                        arg_obj = {
+                                            "value": arg[1:-1],  # Remove quotes
+                                            "type": "literal",
+                                            "original": arg,
+                                        }
+                                        processed_args.append(arg_obj)
+                                    continue
+
+                                # Handle NULL literal
+                                if arg.upper() == "NULL":
+                                    processed_args.append(None)
+                                    continue
+
+                                # Try to convert to number
+                                try:
+                                    if "." not in arg and arg.lstrip("-").isdigit():
+                                        processed_args.append(int(arg))
+                                    else:
+                                        processed_args.append(float(arg))
+                                except ValueError:
+                                    # Mark as field reference
+                                    arg_obj = {
+                                        "value": arg,
+                                        "type": "field_reference",
+                                        "original": arg,
+                                    }
+                                    processed_args.append(arg_obj)
 
                             try:
-                                # Try to map the function
+                                # Try to map the function with processed arguments
                                 function_mapping = self.function_mapper.map_function(
-                                    func_name, args
+                                    func_name, processed_args
                                 )
                                 projection[col_stripped] = function_mapping
                                 continue
@@ -1430,14 +1602,21 @@ class MongoSQLTranslator:
                         if current_arg.strip():
                             args.append(current_arg.strip())
 
-                    # Convert numeric arguments for better type handling
+                    # Convert arguments with type information for better handling
                     converted_args = []
                     for arg in args:
-                        # Remove quotes if they exist
-                        if arg.startswith("'") and arg.endswith("'"):
-                            arg = arg[1:-1]
-                        elif arg.startswith('"') and arg.endswith('"'):
-                            arg = arg[1:-1]
+                        # Handle quoted strings - mark as literals
+                        if (arg.startswith("'") and arg.endswith("'")) or (
+                            arg.startswith('"') and arg.endswith('"')
+                        ):
+                            converted_args.append(
+                                {
+                                    "value": arg[1:-1],  # Remove quotes
+                                    "type": "literal",
+                                    "original": arg,
+                                }
+                            )
+                            continue
 
                         # Check if the argument contains function calls or mathematical expressions
                         if self._contains_expression(arg):
@@ -1459,8 +1638,181 @@ class MongoSQLTranslator:
                             else:
                                 converted_args.append(float(arg))
                         except ValueError:
-                            # If conversion fails, keep as string
-                            converted_args.append(arg)
+                            # If conversion fails, mark as potential field reference
+                            converted_args.append(
+                                {
+                                    "value": arg,
+                                    "type": "field_reference",
+                                    "original": arg,
+                                }
+                            )
+
+                    args = converted_args
+
+                # Use original_call as field name if available
+                field_name = col.get(
+                    "original_call", f"{func_name}({col.get('args_str', '')})"
+                )
+
+                try:
+                    # Map the function to MongoDB equivalent
+                    function_mapping = self.function_mapper.map_function(
+                        func_name, args
+                    )
+                    projection_stage[field_name] = function_mapping
+                except Exception as e:
+                    # Function not supported or error in mapping
+                    projection_stage[field_name] = {
+                        "$literal": f"Function {func_name} error: {str(e)}"
+                    }
+
+            elif isinstance(col, dict) and "column" in col:
+                # Regular column with alias
+                col_name = col["column"]
+                projection_stage[col_name] = f"${col_name}"
+
+            else:
+                # Simple column name
+                if isinstance(col, str):
+                    projection_stage[col] = f"${col}"
+
+        # Add the projection stage
+        if projection_stage:
+            pipeline.append({"$project": projection_stage})
+
+        return {
+            "operation": "aggregate",
+            "collection": parsed_sql.get("from"),
+            "pipeline": pipeline,
+        }
+
+    def _handle_mixed_columns_with_from(
+        self, parsed_sql: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Handle SELECT queries with both regular columns and functions"""
+        pipeline = []
+
+        # Add match stage if WHERE clause exists
+        if parsed_sql.get("where"):
+            match_filter = self._translate_where(parsed_sql["where"])
+            if match_filter:
+                pipeline.append({"$match": match_filter})
+
+        # Add subquery stages if subqueries exist
+        if parsed_sql.get("subqueries"):
+            subquery_stages = self.subquery_translator.translate_subqueries_to_pipeline(
+                parsed_sql["subqueries"], parsed_sql.get("from", "")
+            )
+            if subquery_stages:
+                pipeline.extend(subquery_stages)
+
+        # Add ORDER BY stages if ORDER BY exists (must be before LIMIT)
+        if parsed_sql.get("orderby"):
+            sort_stages = self.orderby_translator.translate_orderby_to_pipeline(
+                parsed_sql["orderby"]
+            )
+            if sort_stages:
+                pipeline.extend(sort_stages)
+
+        # Add limit stage if LIMIT exists (must be after ORDER BY)
+        if parsed_sql.get("limit"):
+            limit_info = parsed_sql["limit"]
+            if "offset" in limit_info:
+                pipeline.append({"$skip": limit_info["offset"]})
+            if "count" in limit_info:
+                pipeline.append({"$limit": limit_info["count"]})
+
+        # Build projection stage with both regular columns and functions
+        projection_stage = {}
+
+        for col in parsed_sql["columns"]:
+            if isinstance(col, dict) and "function" in col:
+                # Function column - process like in _handle_function_with_from
+                func_name = col["function"]
+                args = []
+
+                # Parse arguments from args_str
+                if "args_str" in col and col["args_str"]:
+                    args_str = col["args_str"]
+                    args = []
+
+                    if args_str:
+                        # Enhanced argument parsing - handle nested parentheses and quotes
+                        current_arg = ""
+                        in_quotes = False
+                        quote_char = None
+                        paren_depth = 0
+
+                        for char in args_str:
+                            if char in ("'", '"') and not in_quotes:
+                                in_quotes = True
+                                quote_char = char
+                                current_arg += char
+                            elif char == quote_char and in_quotes:
+                                in_quotes = False
+                                quote_char = None
+                                current_arg += char
+                            elif char == "(" and not in_quotes:
+                                paren_depth += 1
+                                current_arg += char
+                            elif char == ")" and not in_quotes:
+                                paren_depth -= 1
+                                current_arg += char
+                            elif char == "," and not in_quotes and paren_depth == 0:
+                                # Only split on commas at the top level (not inside parentheses)
+                                args.append(current_arg.strip())
+                                current_arg = ""
+                            else:
+                                current_arg += char
+
+                        # Add the last argument
+                        if current_arg.strip():
+                            args.append(current_arg.strip())
+
+                    # Convert arguments with type information for better handling
+                    converted_args = []
+                    for arg in args:
+                        # Handle quoted strings - mark as literals
+                        if (arg.startswith("'") and arg.endswith("'")) or (
+                            arg.startswith('"') and arg.endswith('"')
+                        ):
+                            converted_args.append(
+                                {
+                                    "value": arg[1:-1],  # Remove quotes
+                                    "type": "literal",
+                                    "original": arg,
+                                }
+                            )
+                            continue
+
+                        # Check if the argument contains function calls or mathematical expressions
+                        if self._contains_expression(arg):
+                            # Evaluate the expression
+                            try:
+                                evaluated_arg = self._evaluate_argument_expression(arg)
+                                converted_args.append(evaluated_arg)
+                                continue
+                            except:
+                                # If evaluation fails, continue with original logic
+                                pass
+
+                        # Try to convert to number if it looks like a number
+                        try:
+                            # Check if it's an integer
+                            if "." not in arg and arg.lstrip("-").isdigit():
+                                converted_args.append(int(arg))
+                            # Check if it's a float
+                            else:
+                                converted_args.append(float(arg))
+                        except ValueError:
+                            # If conversion fails, mark as potential field reference
+                            converted_args.append(
+                                {
+                                    "value": arg,
+                                    "type": "field_reference",
+                                    "original": arg,
+                                }
+                            )
 
                     args = converted_args
 
