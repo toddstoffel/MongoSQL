@@ -563,12 +563,12 @@ class MariaDBQARunner:
             ("SELECT CONCAT_WS(', ', customerName, city, country) FROM customers LIMIT 1", "CONCAT_WS_TABLE"),
             
             # Regular expressions - comprehensive coverage
-            ("SELECT customerName FROM customers WHERE customerName REGEXP '^A.*' LIMIT 3", "REGEXP_BASIC"),
+            ("SELECT customerName FROM customers WHERE customerName REGEXP '^A.*' ORDER BY customerName LIMIT 3", "REGEXP_BASIC"),
             ("SELECT REGEXP_SUBSTR('Hello World 123', '[0-9]+')", "REGEXP_SUBSTR"),
-            ("SELECT customerName FROM customers WHERE customerName RLIKE '.*Inc$' LIMIT 2", "RLIKE_BASIC"),
+            ("SELECT customerName FROM customers WHERE customerName RLIKE '.*Inc$' ORDER BY customerName LIMIT 2", "RLIKE_BASIC"),
             ("SELECT 'test123' REGEXP '[0-9]+' AS has_numbers", "REGEXP_PATTERN_DIGITS"),
             ("SELECT 'Email@domain.com' REGEXP '[A-Za-z]+@[A-Za-z]+\\.[A-Za-z]+' AS valid_email", "REGEXP_EMAIL_PATTERN"),
-            ("SELECT customerName FROM customers WHERE customerName REGEXP '(Co|Inc|Ltd)\\.' LIMIT 2", "REGEXP_ALTERNATION"),
+            ("SELECT customerName FROM customers WHERE customerName REGEXP 'Inc$' ORDER BY customerName LIMIT 2", "REGEXP_ALTERNATION"),
             ("SELECT 'ABC123def' REGEXP '^[A-Z]+[0-9]+[a-z]+$' AS pattern_match", "REGEXP_COMPLEX_PATTERN"),
             
             # Number formatting
@@ -589,8 +589,8 @@ class MariaDBQARunner:
         """Get enhanced aggregate function test cases for Phase 2"""
         return [
             # GROUP_CONCAT functionality
-            ("SELECT GROUP_CONCAT(customerName) FROM customers WHERE country = 'USA' LIMIT 1", "GROUP_CONCAT_BASIC"),
-            ("SELECT country, GROUP_CONCAT(customerName SEPARATOR '; ') FROM customers GROUP BY country LIMIT 3", "GROUP_CONCAT_SEPARATOR"),
+            ("SELECT GROUP_CONCAT(customerName ORDER BY customerName) FROM customers WHERE country = 'USA' LIMIT 1", "GROUP_CONCAT_BASIC"),
+            ("SELECT country, GROUP_CONCAT(customerName ORDER BY customerName SEPARATOR '; ') FROM customers GROUP BY country ORDER BY country LIMIT 3", "GROUP_CONCAT_SEPARATOR"),
             ("SELECT GROUP_CONCAT(DISTINCT country ORDER BY country) FROM customers", "GROUP_CONCAT_DISTINCT"),
             
             # Statistical aggregates

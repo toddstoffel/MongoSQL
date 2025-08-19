@@ -474,10 +474,20 @@ class MongoSQLTranslator:
             converted_value = self._convert_value(value)
             regex_pattern = str(converted_value).replace('%', '.*').replace('_', '.')
             return {field: {'$regex': regex_pattern, '$options': 'i'}}
+        elif operator.upper() == 'IS NULL':
+            # Handle IS NULL - MongoDB uses None/null
+            return {field: {'$eq': None}}
+        elif operator.upper() == 'IS NOT NULL':
+            # Handle IS NOT NULL - MongoDB uses $ne with None/null
+            return {field: {'$ne': None}}
         elif operator.upper() in ['REGEXP', 'REGEX', 'RLIKE']:
             # Handle REGEXP/REGEX/RLIKE operators - direct regex pattern
             converted_value = self._convert_value(value)
             return {field: {'$regex': str(converted_value), '$options': 'i'}}
+        elif operator.upper() in ['NOT REGEXP', 'NOT RLIKE']:
+            # Handle NOT REGEXP/NOT RLIKE operators - negated regex pattern
+            converted_value = self._convert_value(value)
+            return {field: {'$not': {'$regex': str(converted_value), '$options': 'i'}}}
         elif operator.upper() == 'IN':
             # Handle IN operator
             if isinstance(value, list):
@@ -778,42 +788,51 @@ class MongoSQLTranslator:
             if match_filter:
                 pipeline.append({'$match': match_filter})
         
-        # Map function names to MongoDB operators
-        mongo_op_map = {
-            'STDDEV_POP': '$stdDevPop',
-            'STDDEV_SAMP': '$stdDevSamp',
-            'VAR_POP': '$stdDevPop',  # Will square this
-            'VAR_SAMP': '$stdDevSamp'  # Will square this
-        }
-        
-        mongo_op = mongo_op_map.get(func_name)
-        if not mongo_op:
-            raise Exception(f"Unsupported statistical function: {func_name}")
-        
         # Group stage
         group_stage = {
             '$group': {
                 '_id': None,
-                'result': {mongo_op: f'${field}'}
+                f'{func_name}({field})': None
             }
         }
+        
+        # Handle specific aggregate functions
+        if func_name == 'STDDEV_POP' or func_name == 'STDDEV':
+            group_stage['$group'][f'{func_name}({field})'] = {'$stdDevPop': f'${field}'}
+        elif func_name == 'STDDEV_SAMP':
+            group_stage['$group'][f'{func_name}({field})'] = {'$stdDevSamp': f'${field}'}
+        elif func_name == 'VAR_POP' or func_name == 'VARIANCE':
+            group_stage['$group'][f'{func_name}({field})'] = {'$pow': [{'$stdDevPop': f'${field}'}, 2]}
+        elif func_name == 'VAR_SAMP':
+            group_stage['$group'][f'{func_name}({field})'] = {'$pow': [{'$stdDevSamp': f'${field}'}, 2]}
+        else:
+            group_stage['$group'][f'{func_name}({field})'] = {'$literal': f"Function {func_name} not supported"}
+        
         pipeline.append(group_stage)
         
-        # For variance functions, square the standard deviation
-        if func_name in ['VAR_POP', 'VAR_SAMP']:
-            pipeline.append({
-                '$project': {
-                    '_id': 0,
-                    f'{func_name}({field})': {'$multiply': ['$result', '$result']}
-                }
-            })
-        else:
-            pipeline.append({
-                '$project': {
-                    '_id': 0,
-                    f'{func_name}({field})': '$result'
-                }
-            })
+        # Add ORDER BY using modular parser (if applicable for aggregate results)
+        if parsed_sql.get('order_by') or parsed_sql.get('original_sql'):
+            if parsed_sql.get('order_by'):
+                for order_item in parsed_sql['order_by']:
+                    direction = 1 if order_item['direction'] == 'ASC' else -1
+                    sort_spec = {}
+                    # For aggregate results, we may need to map field names
+                    field_name = order_item['field']
+                    if field_name in [f'{func_name}({field})']:
+                        sort_spec[field_name] = direction
+                pipeline.append({'$sort': sort_spec})
+            else:
+                # Try to parse ORDER BY from original SQL
+                original_sql = parsed_sql.get('original_sql', '')
+                if original_sql:
+                    order_by_clause = self.orderby_parser.parse_order_by(original_sql)
+                    if order_by_clause and not order_by_clause.is_empty():
+                        sort_stages = self.orderby_translator.get_sort_pipeline_stage(order_by_clause)
+                        if sort_stages:
+                            pipeline.extend(sort_stages)
+        
+        # Remove the _id field in projection
+        pipeline.append({'$project': {'_id': 0}})
         
         return {
             'operation': 'aggregate',
@@ -1662,3 +1681,132 @@ class MongoSQLTranslator:
             'collection': parsed_sql.get('from'),
             'pipeline': pipeline
         }
+
+    # ========================================================================
+    # ENHANCED TRANSLATION METHODS - SAFE CORE EXTENSIONS (NON-BREAKING)
+    # ========================================================================
+    
+    def translate_with_expressions(self, parsed_sql: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhanced translator that handles expression patterns like REGEXP
+        
+        This method extends existing translation without modifying core logic.
+        It first tries existing translation, then adds expression handling if needed.
+        """
+        try:
+            # Check if we have enhanced expressions that need special handling
+            if parsed_sql.get('has_regexp_expressions'):
+                return self._translate_with_regexp_support(parsed_sql)
+            
+            # Otherwise, use standard translation (no changes to existing logic)
+            return self.translate(parsed_sql)
+            
+        except Exception:
+            # If enhanced translation fails, fallback to original
+            return self.translate(parsed_sql)
+    
+    def _translate_with_regexp_support(self, parsed_sql: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle translation with REGEXP expression support"""
+        enhanced_columns = parsed_sql.get('enhanced_columns', [])
+        
+        # Check if this is a no-table query (like SELECT 'test' REGEXP 'pattern')
+        if not parsed_sql.get('from'):
+            return self._handle_no_table_regexp_query(parsed_sql, enhanced_columns)
+        
+        # For queries with FROM clause, use aggregation pipeline
+        return self._handle_regexp_with_from(parsed_sql, enhanced_columns)
+    
+    def _handle_no_table_regexp_query(self, parsed_sql: Dict[str, Any], enhanced_columns: List[Any]) -> Dict[str, Any]:
+        """Handle SELECT REGEXP expressions without FROM clause"""
+        projection = {}
+        
+        for col in enhanced_columns:
+            if isinstance(col, dict) and col.get('type') == 'regexp_expression':
+                expr = col['expression']
+                alias = col.get('alias', expr)
+                
+                # Use the REGEXP module to translate the expression
+                try:
+                    from ..modules.regexp.regexp_function_mapper import regexp_mapper
+                    regexp_result = regexp_mapper.translate_infix_regexp(expr, 'SELECT', alias)
+                    if regexp_result:
+                        projection.update(regexp_result)
+                    else:
+                        # Fallback to literal if REGEXP translation fails
+                        projection[alias] = {'$literal': expr}
+                except ImportError:
+                    # If REGEXP module not available, treat as literal
+                    projection[alias] = {'$literal': expr}
+            else:
+                # Handle regular columns using existing logic
+                if isinstance(col, str):
+                    projection[col] = {'$literal': col}
+        
+        return {
+            'operation': 'eval',
+            'type': 'no_table_regexp_query',
+            'projection': projection
+        }
+    
+    def _handle_regexp_with_from(self, parsed_sql: Dict[str, Any], enhanced_columns: List[Any]) -> Dict[str, Any]:
+        """Handle SELECT REGEXP expressions with FROM clause using aggregation pipeline"""
+        pipeline = []
+        
+        # Add match stage if WHERE clause exists
+        if parsed_sql.get('where'):
+            match_filter = self._translate_where(parsed_sql['where'])
+            if match_filter:
+                pipeline.append({'$match': match_filter})
+        
+        # Build projection stage with REGEXP expressions
+        projection = {}
+        
+        for col in enhanced_columns:
+            if isinstance(col, dict) and col.get('type') == 'regexp_expression':
+                expr = col['expression']
+                alias = col.get('alias', expr)
+                
+                # Use the REGEXP module to translate the expression
+                try:
+                    from ..modules.regexp.regexp_function_mapper import regexp_mapper
+                    regexp_result = regexp_mapper.translate_infix_regexp(expr, 'SELECT', alias)
+                    if regexp_result:
+                        projection.update(regexp_result)
+                    else:
+                        # Fallback to literal if REGEXP translation fails
+                        projection[alias] = {'$literal': expr}
+                except ImportError:
+                    # If REGEXP module not available, treat as literal
+                    projection[alias] = {'$literal': expr}
+            else:
+                # Handle regular columns
+                if isinstance(col, str):
+                    projection[col] = 1
+        
+        # Add projection stage
+        if projection:
+            pipeline.append({'$project': projection})
+        
+        # Add ORDER BY, LIMIT etc. using existing logic
+        if parsed_sql.get('order_by'):
+            sort_spec = {}
+            for order_item in parsed_sql['order_by']:
+                direction = 1 if order_item['direction'] == 'ASC' else -1
+                sort_spec[order_item['field']] = direction
+            pipeline.append({'$sort': sort_spec})
+        
+        if parsed_sql.get('limit'):
+            pipeline.append({'$limit': parsed_sql['limit']['count']})
+        
+        return {
+            'operation': 'aggregate',
+            'collection': parsed_sql.get('from'),
+            'pipeline': pipeline
+        }
+    
+    def has_enhanced_expressions(self, parsed_sql: Dict[str, Any]) -> bool:
+        """Check if parsed SQL has expressions that benefit from enhancement"""
+        return parsed_sql.get('has_regexp_expressions', False)
+    
+    def can_use_enhanced_translation(self, parsed_sql: Dict[str, Any]) -> bool:
+        """Check if enhanced translation should be used"""
+        return self.has_enhanced_expressions(parsed_sql)

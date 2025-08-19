@@ -17,7 +17,7 @@ class RegexpParser:
     """Parser for REGEXP expressions in SQL"""
     
     def __init__(self):
-        self.regexp_operators = ['REGEXP', 'RLIKE', 'NOT REGEXP']
+        self.regexp_operators = ['NOT REGEXP', 'NOT RLIKE', 'REGEXP', 'RLIKE']
     
     def parse_select_list(self, tokens: List[Token]) -> List[RegexpOperation]:
         """Parse SELECT expressions for REGEXP operations"""
@@ -174,6 +174,8 @@ class RegexpParser:
             return RegexpOperationType.RLIKE
         elif op_upper == 'NOT REGEXP':
             return RegexpOperationType.NOT_REGEXP
+        elif op_upper == 'NOT RLIKE':
+            return RegexpOperationType.NOT_RLIKE
         else:
             return RegexpOperationType.REGEXP  # Default
     

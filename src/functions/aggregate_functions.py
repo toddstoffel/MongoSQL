@@ -165,15 +165,52 @@ class AggregateFunctionMapper:
                     'separator': ','  # Default separator
                 }
             
-        # Handle variance functions (need to square stddev result)
+        # Handle variance functions (need to square stddev result with rounding)
         if func_upper in ['VAR_POP', 'VAR_SAMP', 'VARIANCE']:
             if field:
-                return {
-                    'operator': mapping['mongodb'],
-                    'value': f'${field}',
-                    'stage': mapping['stage'],
-                    'transform': mapping.get('transform')
-                }
+                if func_upper == 'VAR_POP':
+                    # MongoDB doesn't have VAR_POP, calculate as (STDDEV_POP)^2 with MariaDB precision
+                    return {
+                        'operator': {"$round": [{"$pow": [{"$stdDevPop": f"${field}"}, 2]}, 6]},
+                        'value': f'${field}',
+                        'stage': mapping['stage']
+                    }
+                elif func_upper == 'VAR_SAMP':
+                    # MongoDB doesn't have VAR_SAMP, calculate as (STDDEV_SAMP)^2 with MariaDB precision
+                    return {
+                        'operator': {"$round": [{"$pow": [{"$stdDevSamp": f"${field}"}, 2]}, 6]},
+                        'value': f'${field}',
+                        'stage': mapping['stage']
+                    }
+                else:
+                    return {
+                        'operator': mapping['mongodb'],
+                        'value': f'${field}',
+                        'stage': mapping['stage'],
+                        'transform': mapping.get('transform')
+                    }
+
+        # Handle STDDEV functions with MariaDB precision (6 decimal places)
+        if func_upper in ['STDDEV_POP', 'STDDEV_SAMP', 'STDDEV']:
+            if field:
+                if func_upper == 'STDDEV_POP':
+                    return {
+                        'operator': {"$round": [{"$stdDevPop": f"${field}"}, 6]},
+                        'value': f'${field}',
+                        'stage': mapping['stage']
+                    }
+                elif func_upper == 'STDDEV_SAMP':
+                    return {
+                        'operator': {"$round": [{"$stdDevSamp": f"${field}"}, 6]},
+                        'value': f'${field}',
+                        'stage': mapping['stage']
+                    }
+                else:  # STDDEV
+                    return {
+                        'operator': {"$round": [{"$stdDevPop": f"${field}"}, 6]},
+                        'value': f'${field}',
+                        'stage': mapping['stage']
+                    }
 
         # Handle other aggregate functions
         if field:

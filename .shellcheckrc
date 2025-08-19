@@ -1,0 +1,11 @@
+# ShellCheck configuration for MongoSQL project
+# Exclude Python files that don't have .py extension
+
+# Disable shellcheck for specific files
+# mongosql is a Python script, not a shell script
+
+# Global exclusions for common false positives
+exclude=SC1008,SC2148
+
+# Note: The 'mongosql' file should be treated as Python, not shell script
+# This is configured in .vscode/settings.json with file associations

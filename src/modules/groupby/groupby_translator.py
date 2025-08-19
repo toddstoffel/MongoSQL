@@ -10,6 +10,10 @@ from .groupby_types import GroupByStructure, AggregateFunction
 class GroupByTranslator:
     """Translator for GROUP BY operations to MongoDB aggregation pipelines"""
     
+    def __init__(self):
+        """Initialize the translator"""
+        pass
+    
     def translate(self, group_by_structure: GroupByStructure, parsed_sql: Dict[str, Any]) -> Dict[str, Any]:
         """
         Translate GROUP BY structure to MongoDB aggregation pipeline
@@ -73,14 +77,23 @@ class GroupByTranslator:
             # Use original_call as field name if available, otherwise fall back to constructed name
             alias = agg_func.alias or agg_func.original_call or f"{agg_func.function_name.lower()}_{agg_func.field_name}"
             
+            # Handle specific aggregate functions
             if agg_func.function_name == 'COUNT':
                 if agg_func.field_name == '*':
                     group_stage["$group"][alias] = {"$sum": 1}
                 else:
                     group_stage["$group"][alias] = {"$sum": {"$cond": [{"$ne": [f"${agg_func.field_name}", None]}, 1, 0]}}
-            elif agg_func.function_name in ['SUM', 'AVG', 'MAX', 'MIN']:
-                mongo_op = f"${agg_func.function_name.lower()}"
-                group_stage["$group"][alias] = {mongo_op: f"${agg_func.field_name}"}
+            elif agg_func.function_name == 'SUM':
+                group_stage["$group"][alias] = {"$sum": f"${agg_func.field_name}"}
+            elif agg_func.function_name == 'AVG':
+                group_stage["$group"][alias] = {"$avg": f"${agg_func.field_name}"}
+            elif agg_func.function_name == 'MAX':
+                group_stage["$group"][alias] = {"$max": f"${agg_func.field_name}"}
+            elif agg_func.function_name == 'MIN':
+                group_stage["$group"][alias] = {"$min": f"${agg_func.field_name}"}
+            else:
+                # Function not supported
+                group_stage["$group"][alias] = {"$literal": f"Function {agg_func.function_name} not supported"}
         
         # Add regular columns as first values (for GROUP BY)
         for col in group_by_structure.regular_columns:

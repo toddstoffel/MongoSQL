@@ -15,13 +15,14 @@ class RegexpOperationType(Enum):
     REGEXP = "REGEXP"      # 'text' REGEXP 'pattern'
     RLIKE = "RLIKE"        # 'text' RLIKE 'pattern' (alias for REGEXP)
     NOT_REGEXP = "NOT_REGEXP"  # 'text' NOT REGEXP 'pattern'
+    NOT_RLIKE = "NOT_RLIKE"    # 'text' NOT RLIKE 'pattern'
 
 
 @dataclass
 class InfixRegexpExpression:
     """Represents an infix REGEXP expression like 'text' REGEXP 'pattern'"""
     left_operand: str      # The text expression to test
-    operator: str          # REGEXP, RLIKE, or NOT REGEXP
+    operator: str          # REGEXP, RLIKE, NOT REGEXP, or NOT RLIKE
     right_operand: str     # The regex pattern
     original_expression: str  # Original SQL expression
     
@@ -34,7 +35,7 @@ class InfixRegexpExpression:
             }
         }
         
-        if self.operator.upper() == "NOT REGEXP":
+        if self.operator.upper() in ["NOT REGEXP", "NOT RLIKE"]:
             return {"$not": base_regex}
         else:
             return base_regex
@@ -84,7 +85,7 @@ class RegexpOperation:
 
 
 # Supported REGEXP operators
-SUPPORTED_REGEXP_OPERATORS = ['REGEXP', 'RLIKE', 'NOT REGEXP']
+SUPPORTED_REGEXP_OPERATORS = ['NOT REGEXP', 'NOT RLIKE', 'REGEXP', 'RLIKE']
 
 
 def is_regexp_expression(expression: str) -> bool:
@@ -97,11 +98,14 @@ def parse_regexp_expression(expression: str) -> Optional[InfixRegexpExpression]:
     """Parse a string expression to extract REGEXP components"""
     expr_upper = expression.upper()
     
-    # Find the REGEXP operator
+    # Find the REGEXP operator - search longest operators first to avoid partial matches
     operator = None
     operator_pos = -1
     
-    for op in SUPPORTED_REGEXP_OPERATORS:
+    # Sort operators by length descending to prioritize 'NOT REGEXP' over 'REGEXP'
+    sorted_operators = sorted(SUPPORTED_REGEXP_OPERATORS, key=len, reverse=True)
+    
+    for op in sorted_operators:
         pos = expr_upper.find(f' {op} ')
         if pos != -1:
             operator = op

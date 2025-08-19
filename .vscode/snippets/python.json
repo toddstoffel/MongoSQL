@@ -1,0 +1,126 @@
+{
+  "MongoSQL Function Mapper": {
+    "prefix": "mongosql-function",
+    "body": [
+      "def _map_${1:function_name}(self, args: List[str]) -> Dict[str, Any]:",
+      "    \"\"\"Map ${1:function_name} function to MongoDB equivalent\"\"\"",
+      "    if not args:",
+      "        raise ValueError(\"${1:function_name} requires at least one argument\")",
+      "    ",
+      "    field = args[0]",
+      "    return {\"\\$${2:mongodb_operator}\": f\"\\${field}\"}"
+    ],
+    "description": "Create a new function mapper for MongoSQL"
+  },
+  "MongoSQL Module Parser": {
+    "prefix": "mongosql-parser",
+    "body": [
+      "class ${1:Module}Parser:",
+      "    \"\"\"Parser for ${1:Module} operations\"\"\"",
+      "    ",
+      "    def parse_${2:operation}(self, tokens: List[Token]) -> ${1:Module}Structure:",
+      "        \"\"\"Parse ${2:operation} from SQL tokens\"\"\"",
+      "        structure = ${1:Module}Structure()",
+      "        ",
+      "        for token in tokens:",
+      "            if token.ttype is sqlparse.tokens.Keyword:",
+      "                # Handle keyword logic",
+      "                pass",
+      "        ",
+      "        return structure"
+    ],
+    "description": "Create a new module parser for MongoSQL"
+  },
+  "MongoSQL MongoDB Test": {
+    "prefix": "mongosql-test",
+    "body": [
+      "def test_${1:function_name}(self):",
+      "    \"\"\"Test ${1:function_name} translation\"\"\"",
+      "    sql = \"${2:SELECT function() FROM table}\"",
+      "    expected_mongo = {",
+      "        'operation': 'aggregate',",
+      "        'collection': '${3:table}',",
+      "        'pipeline': [",
+      "            {'\\$project': {'${4:result}': {'\\$${5:operator}': '\\$${6:field}'}}},",
+      "            {'\\$project': {'_id': 0}}",
+      "        ]",
+      "    }",
+      "    ",
+      "    result = self.translator.translate(sql)",
+      "    self.assertEqual(result, expected_mongo)"
+    ],
+    "description": "Create a test for MongoSQL function translation"
+  },
+  "MongoSQL QA Test Case": {
+    "prefix": "mongosql-qa",
+    "body": [
+      "{",
+      "    'name': '${1:TEST_NAME}',",
+      "    'sql': '${2:SELECT * FROM table}',",
+      "    'description': '${3:Test description}'",
+      "},"
+    ],
+    "description": "Create a QA test case for MongoSQL"
+  },
+  "MongoSQL Debug Print": {
+    "prefix": "mongosql-debug",
+    "body": [
+      "print(f\"🐛 DEBUG: ${1:variable_name} = {${1:variable_name}}\")"
+    ],
+    "description": "Debug print statement for MongoSQL development"
+  },
+  "MongoSQL Pipeline Stage": {
+    "prefix": "mongosql-pipeline",
+    "body": [
+      "# ${1:Stage description}",
+      "pipeline.append({",
+      "    '\\$${2:stage}': {",
+      "        '${3:field}': ${4:value}",
+      "    }",
+      "})"
+    ],
+    "description": "Add a MongoDB aggregation pipeline stage"
+  },
+  "MongoSQL Error Handler": {
+    "prefix": "mongosql-error",
+    "body": [
+      "try:",
+      "    ${1:# Code that might fail}",
+      "except Exception as e:",
+      "    raise Exception(f\"${2:Error context}: {str(e)}\")"
+    ],
+    "description": "Error handling pattern for MongoSQL"
+  },
+  "MongoSQL Function Registration": {
+    "prefix": "mongosql-register",
+    "body": [
+      "self.function_map = {",
+      "    **self.function_map,",
+      "    '${1:FUNCTION_NAME}': self._map_${2:function_name},",
+      "}"
+    ],
+    "description": "Register a function in the function mapper"
+  },
+  "MongoSQL CLI Test": {
+    "prefix": "mongosql-cli",
+    "body": [
+      "./mongosql classicmodels -e \"${1:SELECT COUNT(*) FROM customers}\""
+    ],
+    "description": "MongoSQL CLI command template"
+  },
+  "MongoSQL Token Parser": {
+    "prefix": "mongosql-tokens",
+    "body": [
+      "# Parse tokens using sqlparse",
+      "parsed = sqlparse.parse(sql)[0]",
+      "tokens = list(parsed.flatten())",
+      "",
+      "for token in tokens:",
+      "    if token.ttype is sqlparse.tokens.Keyword:",
+      "        if token.value.upper() == '${1:KEYWORD}':",
+      "            ${2:# Handle keyword}",
+      "            pass"
+    ],
+    "description": "Token-based SQL parsing pattern"
+  }
+}

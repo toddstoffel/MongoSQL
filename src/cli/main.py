@@ -197,8 +197,27 @@ def execute_statement(sql, parser, translator, db_client, vertical_format=False,
         if isinstance(parsed, dict):
             parsed['original_sql'] = sql
         
-        # Translate to MQL
-        mql_query = translator.translate(parsed)
+        # Check if we need enhanced parsing for REGEXP expressions
+        needs_enhanced_parsing = False
+        if hasattr(parser, 'has_enhanced_expressions'):
+            needs_enhanced_parsing = parser.has_enhanced_expressions(sql)
+        
+        # Use enhanced parsing if needed and available
+        if needs_enhanced_parsing and hasattr(parser, 'parse_with_expressions'):
+            try:
+                enhanced_parsed = parser.parse_with_expressions(sql)
+                if enhanced_parsed:
+                    parsed = enhanced_parsed
+            except Exception:
+                # If enhanced parsing fails, continue with standard parsing
+                pass
+        
+        # Choose translator method based on parsed content
+        if hasattr(translator, 'can_use_enhanced_translation') and translator.can_use_enhanced_translation(parsed):
+            mql_query = translator.translate_with_expressions(parsed)
+        else:
+            # Translate to MQL using standard method
+            mql_query = translator.translate(parsed)
         
         # Execute query
         result = db_client.execute_query(mql_query)

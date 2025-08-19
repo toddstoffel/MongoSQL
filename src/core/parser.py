@@ -686,3 +686,78 @@ class TokenBasedSQLParser:
     
     def _parse_use(self, parsed: Statement) -> Dict[str, Any]:
         return {'type': 'USE', 'error': 'Not implemented with token parsing yet'}
+
+    # ========================================================================
+    # ENHANCED PARSING METHODS - SAFE CORE EXTENSIONS (NON-BREAKING)
+    # ========================================================================
+    
+    def parse_with_expressions(self, sql: str) -> Dict[str, Any]:
+        """Enhanced parser that recognizes expression patterns like REGEXP
+        
+        This method extends existing parsing without modifying core logic.
+        It first uses the standard parser, then enhances with expression recognition.
+        """
+        try:
+            # First, use existing parser (no changes to existing logic)
+            result = self.parse(sql)
+            
+            # Then, enhance with expression recognition
+            if 'columns' in result and isinstance(result['columns'], list):
+                enhanced_columns = []
+                has_regexp_expressions = False
+                
+                for col in result['columns']:
+                    if isinstance(col, str) and self._is_regexp_expression(col):
+                        # Extract alias if present
+                        alias = None
+                        expression = col
+                        
+                        # Check for AS alias
+                        if ' AS ' in col.upper():
+                            parts = col.rsplit(' AS ', 1)
+                            if len(parts) == 2:
+                                expression = parts[0].strip()
+                                alias = parts[1].strip()
+                        
+                        enhanced_columns.append({
+                            'type': 'regexp_expression',
+                            'expression': expression,
+                            'alias': alias,
+                            'original': col
+                        })
+                        has_regexp_expressions = True
+                    else:
+                        enhanced_columns.append(col)  # Keep original unchanged
+                
+                # Only add enhanced_columns if we found REGEXP expressions
+                if has_regexp_expressions:
+                    result['enhanced_columns'] = enhanced_columns
+                    result['has_regexp_expressions'] = True
+            
+            return result
+            
+        except Exception:
+            # If enhanced parsing fails, fallback to original parser
+            return self.parse(sql)
+    
+    def _is_regexp_expression(self, expr: str) -> bool:
+        """Check if expression contains REGEXP operators"""
+        if not isinstance(expr, str):
+            return False
+        
+        expr_upper = expr.upper()
+        # Look for REGEXP operators with word boundaries
+        regexp_patterns = [' REGEXP ', ' RLIKE ', ' NOT REGEXP ']
+        return any(pattern in expr_upper for pattern in regexp_patterns)
+    
+    def has_enhanced_expressions(self, sql: str) -> bool:
+        """Check if SQL contains expressions that benefit from enhancement"""
+        return self._is_regexp_expression(sql)
+    
+    def get_enhanced_column_info(self, parsed_result: Dict[str, Any]) -> Dict[str, Any]:
+        """Extract enhanced column information from parsed result"""
+        return {
+            'has_enhancements': parsed_result.get('has_regexp_expressions', False),
+            'enhanced_columns': parsed_result.get('enhanced_columns', []),
+            'original_columns': parsed_result.get('columns', [])
+        }

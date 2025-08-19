@@ -186,9 +186,28 @@ class WhereParser:
     
     def _parse_simple_where(self, where_str: str) -> Dict[str, Any]:
         """Fallback simple parsing for basic cases"""
-        # Handle simple cases first
-        if ' IN (' in where_str.upper():
-            # Handle IN operator
+        where_upper = where_str.upper()
+        
+        # Handle IS NOT NULL
+        if ' IS NOT NULL' in where_upper:
+            field = where_str[:where_upper.index(' IS NOT NULL')].strip()
+            return {
+                'field': field,
+                'operator': 'IS NOT NULL',
+                'value': None
+            }
+        
+        # Handle IS NULL
+        elif ' IS NULL' in where_upper:
+            field = where_str[:where_upper.index(' IS NULL')].strip()
+            return {
+                'field': field,
+                'operator': 'IS NULL',
+                'value': None
+            }
+        
+        # Handle IN operator
+        elif ' IN (' in where_upper:
             parts = where_str.split(' IN ')
             if len(parts) == 2:
                 field = parts[0].strip()
@@ -202,8 +221,8 @@ class WhereParser:
                         'value': values
                     }
         
-        elif ' LIKE ' in where_str.upper():
-            # Handle LIKE operator
+        # Handle LIKE operator
+        elif ' LIKE ' in where_upper:
             parts = where_str.split(' LIKE ')
             if len(parts) == 2:
                 field = parts[0].strip()
@@ -214,8 +233,75 @@ class WhereParser:
                     'value': value
                 }
         
+        # Handle comparison operators (order matters - check multi-char first)
+        elif '>=' in where_str:
+            parts = where_str.split('>=')
+            if len(parts) == 2:
+                field = parts[0].strip()
+                value = parts[1].strip().strip("'\"")
+                return {
+                    'field': field,
+                    'operator': '>=',
+                    'value': value
+                }
+        
+        elif '<=' in where_str:
+            parts = where_str.split('<=')
+            if len(parts) == 2:
+                field = parts[0].strip()
+                value = parts[1].strip().strip("'\"")
+                return {
+                    'field': field,
+                    'operator': '<=',
+                    'value': value
+                }
+        
+        elif '!=' in where_str:
+            parts = where_str.split('!=')
+            if len(parts) == 2:
+                field = parts[0].strip()
+                value = parts[1].strip().strip("'\"")
+                return {
+                    'field': field,
+                    'operator': '!=',
+                    'value': value
+                }
+        
+        elif '<>' in where_str:
+            parts = where_str.split('<>')
+            if len(parts) == 2:
+                field = parts[0].strip()
+                value = parts[1].strip().strip("'\"")
+                return {
+                    'field': field,
+                    'operator': '!=',  # Normalize <> to !=
+                    'value': value
+                }
+        
+        elif '>' in where_str:
+            parts = where_str.split('>')
+            if len(parts) == 2:
+                field = parts[0].strip()
+                value = parts[1].strip().strip("'\"")
+                return {
+                    'field': field,
+                    'operator': '>',
+                    'value': value
+                }
+        
+        elif '<' in where_str:
+            parts = where_str.split('<')
+            if len(parts) == 2:
+                field = parts[0].strip()
+                value = parts[1].strip().strip("'\"")
+                return {
+                    'field': field,
+                    'operator': '<',
+                    'value': value
+                }
+        
+        # Handle equality (check last to avoid conflicts)
         elif '=' in where_str:
-            # Handle equality
             parts = where_str.split('=')
             if len(parts) == 2:
                 field = parts[0].strip()

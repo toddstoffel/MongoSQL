@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
 MongoSQL - A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Language
+
+This file is a Python script (not a shell script) that serves as the main CLI entry point.
+File association is configured in .vscode/settings.json to treat this as Python.
 """
 
 import sys

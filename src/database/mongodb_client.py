@@ -515,27 +515,36 @@ class MongoDBClient:
         elif '$cond' in expression:
             # Conditional expression (if-then-else)
             cond_expr = expression['$cond']
-            if isinstance(cond_expr, dict):
+            
+            # Handle both array format [condition, then, else] and object format {if, then, else}
+            if isinstance(cond_expr, list) and len(cond_expr) >= 3:
+                # Array format: [condition, then_value, else_value]
+                if_expr = cond_expr[0]
+                then_expr = cond_expr[1]
+                else_expr = cond_expr[2]
+            elif isinstance(cond_expr, dict):
+                # Object format: {if: condition, then: then_value, else: else_value}
                 if_expr = cond_expr.get('if')
                 then_expr = cond_expr.get('then')
                 else_expr = cond_expr.get('else')
-                
-                # Evaluate the condition
-                if isinstance(if_expr, dict):
-                    condition_result = self._evaluate_expression(if_expr)
-                else:
-                    condition_result = bool(if_expr)
-                
-                # Return then or else based on condition
-                if condition_result:
-                    if isinstance(then_expr, dict):
-                        return self._evaluate_expression(then_expr)
-                    return then_expr
-                else:
-                    if isinstance(else_expr, dict):
-                        return self._evaluate_expression(else_expr)
-                    return else_expr
-            return None
+            else:
+                return None
+            
+            # Evaluate the condition
+            if isinstance(if_expr, dict):
+                condition_result = self._evaluate_expression(if_expr)
+            else:
+                condition_result = bool(if_expr)
+            
+            # Return then or else based on condition
+            if condition_result:
+                if isinstance(then_expr, dict):
+                    return self._evaluate_expression(then_expr)
+                return then_expr
+            else:
+                if isinstance(else_expr, dict):
+                    return self._evaluate_expression(else_expr)
+                return else_expr
         
         elif '$gte' in expression:
             # Greater than or equal comparison
@@ -1300,6 +1309,49 @@ class MongoDBClient:
                 else:
                     return first_value
             return None
+        
+        elif '$regexMatch' in expression:
+            # Regular expression matching
+            regex_expr = expression['$regexMatch']
+            if isinstance(regex_expr, dict):
+                input_text = regex_expr.get('input')
+                regex_pattern = regex_expr.get('regex')
+                options = regex_expr.get('options', '')
+                
+                # Evaluate input if it's an expression
+                if isinstance(input_text, dict):
+                    input_text = self._evaluate_expression(input_text)
+                
+                # Convert to string for regex matching
+                input_text = str(input_text) if input_text is not None else ''
+                regex_pattern = str(regex_pattern) if regex_pattern is not None else ''
+                
+                # Perform regex matching
+                try:
+                    import re
+                    flags = 0
+                    if 'i' in options.lower():
+                        flags |= re.IGNORECASE
+                    if 'm' in options.lower():
+                        flags |= re.MULTILINE
+                    if 's' in options.lower():
+                        flags |= re.DOTALL
+                    
+                    return bool(re.search(regex_pattern, input_text, flags))
+                except Exception:
+                    return False
+            return False
+        
+        elif '$not' in expression:
+            # Logical NOT operator
+            not_expr = expression['$not']
+            if isinstance(not_expr, dict):
+                # Evaluate the nested expression and invert the result
+                nested_result = self._evaluate_expression(not_expr)
+                return not bool(nested_result)
+            else:
+                # Simple value inversion
+                return not bool(not_expr)
         
         # Add more expression evaluations as needed
     

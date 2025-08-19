@@ -11,6 +11,7 @@ from ..modules.conditional.conditional_function_mapper import ConditionalFunctio
 from ..modules.json.json_function_mapper import JSONFunctionMapper
 from ..modules.extended_string.extended_string_function_mapper import ExtendedStringFunctionMapper
 from ..modules.regexp.regexp_function_mapper import RegexpFunctionMapper
+from ..modules.enhanced_aggregate.enhanced_aggregate_function_mapper import EnhancedAggregateFunctionMapper
 
 class FunctionMapper:
     """Master mapper that delegates to specialized function mappers"""
@@ -38,6 +39,7 @@ class FunctionMapper:
         self.json_mapper = JSONFunctionMapper()
         self.extended_string_mapper = ExtendedStringFunctionMapper()
         self.regexp_mapper = RegexpFunctionMapper()
+        self.enhanced_aggregate_mapper = EnhancedAggregateFunctionMapper()
         
         # Cache for function categorization
         self._function_categories = self._build_function_categories()
@@ -48,9 +50,15 @@ class FunctionMapper:
         """Build a mapping of function names to their categories"""
         categories = {}
         
+        # Enhanced aggregate functions (priority over basic aggregates)
+        for func in self.enhanced_aggregate_mapper.get_supported_functions():
+            categories[func.upper()] = 'enhanced_aggregate'
+        
         # Aggregate functions
         for func in self.aggregate_mapper.get_supported_functions():
-            categories[func.upper()] = 'aggregate'
+            # Only add if not already in enhanced_aggregate category
+            if func.upper() not in categories:
+                categories[func.upper()] = 'aggregate'
         
         # String functions
         for func in self.string_mapper.get_supported_functions():
@@ -89,7 +97,11 @@ class FunctionMapper:
             raise ValueError(f"Unsupported function: {function_name}")
         
         try:
-            if category == 'aggregate':
+            if category == 'enhanced_aggregate':
+                # Enhanced aggregate functions with complex syntax support
+                return self.enhanced_aggregate_mapper.map_enhanced_aggregate_function(function_name, str(args) if args else '', f"{function_name}({', '.join(str(arg) for arg in args) if args else ''})")
+            
+            elif category == 'aggregate':
                 # For aggregate functions, we might need field information
                 if args and len(args) > 0:
                     field = args[0] if args[0] != '*' else None
@@ -126,8 +138,9 @@ class FunctionMapper:
         return self._function_categories.get(function_name.upper())
     
     def is_aggregate_function(self, function_name: str) -> bool:
-        """Check if function is an aggregate function"""
-        return self.aggregate_mapper.is_aggregate_function(function_name)
+        """Check if function is an aggregate function (including enhanced aggregates)"""
+        return (self.enhanced_aggregate_mapper.is_supported_enhanced_aggregate(function_name) or 
+                self.aggregate_mapper.is_aggregate_function(function_name))
     
     def is_string_function(self, function_name: str) -> bool:
         """Check if function is a string function"""
@@ -144,6 +157,10 @@ class FunctionMapper:
     def is_conditional_function(self, function_name: str) -> bool:
         """Check if function is a conditional function"""
         return self.conditional_mapper.is_conditional_function(function_name)
+    
+    def is_enhanced_aggregate_function(self, function_name: str) -> bool:
+        """Check if function is an enhanced aggregate function"""
+        return self.enhanced_aggregate_mapper.is_supported_enhanced_aggregate(function_name)
     
     def is_json_function(self, function_name: str) -> bool:
         """Check if function is a JSON function"""
@@ -164,6 +181,7 @@ class FunctionMapper:
     def get_all_supported_functions(self) -> Dict[str, List[str]]:
         """Get all supported functions organized by category"""
         return {
+            'enhanced_aggregate': self.enhanced_aggregate_mapper.get_supported_functions(),
             'aggregate': self.aggregate_mapper.get_supported_functions(),
             'string': self.string_mapper.get_supported_functions(),
             'math': self.math_mapper.get_supported_functions(),
@@ -184,7 +202,9 @@ class FunctionMapper:
         info = {'supported': True, 'category': category}
         
         try:
-            if category == 'aggregate':
+            if category == 'enhanced_aggregate':
+                mapper_info = {'description': f'Enhanced aggregate function: {function_name}', 'mongodb': 'enhanced_pipeline'}
+            elif category == 'aggregate':
                 mapper_info = self.aggregate_mapper.function_map.get(func_upper, {})
             elif category == 'string':
                 mapper_info = self.string_mapper.function_map.get(func_upper, {})
