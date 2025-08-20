@@ -11,22 +11,21 @@ from .enhanced_aggregate_types import (
     StatisticalFunction,
     BitwiseFunction,
     EnhancedAggregateFunctionType,
-    is_enhanced_aggregate_function
+    is_enhanced_aggregate_function,
 )
 
 from .enhanced_aggregate_parser import EnhancedAggregateParser
 from .enhanced_aggregate_translator import EnhancedAggregateTranslator
-from .enhanced_aggregate_function_mapper import enhanced_aggregate_mapper
+from .enhanced_aggregate_function_mapper import EnhancedAggregateFunctionMapper
 
 __all__ = [
-    'EnhancedAggregateOperation',
-    'GroupConcatFunction',
-    'StatisticalFunction',
-    'BitwiseFunction',
-    'EnhancedAggregateFunctionType',
-    'is_enhanced_aggregate_function',
-    'EnhancedAggregateParser',
-    'EnhancedAggregateTranslator',
-    'EnhancedAggregateFunctionMapper',
-    'enhanced_aggregate_mapper'
+    "EnhancedAggregateOperation",
+    "GroupConcatFunction",
+    "StatisticalFunction",
+    "BitwiseFunction",
+    "EnhancedAggregateFunctionType",
+    "is_enhanced_aggregate_function",
+    "EnhancedAggregateParser",
+    "EnhancedAggregateTranslator",
+    "EnhancedAggregateFunctionMapper",
 ]

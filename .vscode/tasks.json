@@ -1,0 +1,189 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "MongoSQL: Run Phase 1 Tests",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "QA/mariadb_comparison_qa.py",
+        "--phase",
+        "1"
+      ],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "detail": "Run all Phase 1 core SQL compatibility tests (69 tests)",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MongoSQL: Run Phase 2 Tests",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "QA/mariadb_comparison_qa.py",
+        "--phase",
+        "2"
+      ],
+      "group": "test",
+      "detail": "Run all Phase 2 modern extension tests (JSON, Extended String, Enhanced Aggregate)",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MongoSQL: Run Phase 3 Tests",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "QA/mariadb_comparison_qa.py",
+        "--phase",
+        "3"
+      ],
+      "group": "test",
+      "detail": "Run all Phase 3 enterprise extension tests (Window, CTE, Full-text, Geospatial, Encryption)",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MongoSQL: Test Specific Category",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "QA/mariadb_comparison_qa.py",
+        "--category",
+        "${input:testCategory}",
+        "--verbose"
+      ],
+      "group": "test",
+      "detail": "Run tests for a specific category with verbose output",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MongoSQL: Execute Query",
+      "type": "shell",
+      "command": "./mongosql",
+      "args": [
+        "classicmodels",
+        "-e",
+        "${input:sqlQuery}"
+      ],
+      "group": "build",
+      "detail": "Execute a SQL query using the MongoSQL CLI",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MongoSQL: Check MongoDB Connection",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-c",
+        "from dotenv import load_dotenv; load_dotenv(); from src.database.mongodb_client import MongoDBClient; import os; client = MongoDBClient(host=os.getenv('MONGO_HOST'), username=os.getenv('MONGO_USERNAME'), password=os.getenv('MONGO_PASSWORD'), database='classicmodels'); client.connect(); print('✅ MongoDB connection successful')"
+      ],
+      "group": "build",
+      "detail": "Test MongoDB connection using environment variables",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "MongoSQL: Generate Function Mapping Report",
+      "type": "shell",
+      "command": "python",
+      "args": [
+        "-c",
+        "from src.functions.function_mapper import FunctionMapper; fm = FunctionMapper(); print('📊 Function Mapping Status:'); print(f'Date/Time: {len(fm.datetime_mapper.function_map)} functions'); print(f'String: {len(fm.string_mapper.function_map)} functions'); print(f'Math: {len(fm.math_mapper.function_map)} functions'); print(f'Aggregate: {len(fm.aggregate_mapper.function_map)} functions')"
+      ],
+      "group": "build",
+      "detail": "Generate a report of implemented function mappings",
+      "presentation": {
+        "echo": true,
+        "reveal": "always",
+        "focus": false,
+        "panel": "shared",
+        "showReuseMessage": true,
+        "clear": false
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "testCategory",
+      "description": "Test Category",
+      "default": "datetime",
+      "type": "pickString",
+      "options": [
+        "datetime",
+        "string", 
+        "math",
+        "aggregate",
+        "joins",
+        "groupby",
+        "orderby",
+        "distinct",
+        "conditional",
+        "subqueries",
+        "json",
+        "extended_string",
+        "enhanced_aggregate",
+        "window",
+        "cte", 
+        "fulltext",
+        "geospatial",
+        "encryption",
+        "all"
+      ]
+    },
+    {
+      "id": "sqlQuery",
+      "description": "SQL Query to Execute",
+      "default": "SELECT customerName FROM customers LIMIT 5",
+      "type": "promptString"
+    }
+  ]
+}

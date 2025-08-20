@@ -404,10 +404,29 @@ class MongoSQLTranslator:
     def _translate_where(self, where_clause: Dict[str, Any]) -> Dict[str, Any]:
         """Translate WHERE clause to MongoDB filter"""
         if "_raw" in where_clause:
-            # Handle raw conditions - would need more sophisticated parsing
-            print(
-                f"WARNING: Raw WHERE clause not fully supported: {where_clause['_raw']}"
-            )
+            # Handle raw conditions - check for FULLTEXT expressions first
+            raw_where = where_clause["_raw"]
+
+            # Check for MATCH...AGAINST expressions
+            if "MATCH" in raw_where.upper() and "AGAINST" in raw_where.upper():
+                try:
+                    from ..modules.fulltext.fulltext_parser import FulltextParser
+                    from ..modules.fulltext.fulltext_translator import (
+                        FulltextTranslator,
+                    )
+
+                    fulltext_parser = FulltextParser()
+                    fulltext_translator = FulltextTranslator()
+
+                    fulltext_query = fulltext_parser.parse_match_against(raw_where)
+                    if fulltext_query:
+                        return fulltext_translator.translate_match_against(
+                            fulltext_query, ""
+                        )
+                except ImportError:
+                    pass
+
+            print(f"WARNING: Raw WHERE clause not fully supported: {raw_where}")
             return {}
 
         # Handle compound WHERE clauses with AND/OR
@@ -1707,12 +1726,14 @@ class MongoSQLTranslator:
                 pipeline.extend(subquery_stages)
 
         # Add ORDER BY stages if ORDER BY exists (must be before LIMIT)
-        if parsed_sql.get("orderby"):
-            sort_stages = self.orderby_translator.translate_orderby_to_pipeline(
-                parsed_sql["orderby"]
-            )
-            if sort_stages:
-                pipeline.extend(sort_stages)
+        if parsed_sql.get("order_by"):
+            # Build $sort stage from order_by list
+            sort_spec = {}
+            for order_item in parsed_sql["order_by"]:
+                direction = 1 if order_item["direction"] == "ASC" else -1
+                sort_spec[order_item["field"]] = direction
+            if sort_spec:
+                pipeline.append({"$sort": sort_spec})
 
         # Add limit stage if LIMIT exists (must be after ORDER BY)
         if parsed_sql.get("limit"):

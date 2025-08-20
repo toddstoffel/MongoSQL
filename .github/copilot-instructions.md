@@ -26,13 +26,16 @@ MongoSQL is a comprehensive SQL-to-MongoDB translation engine that converts Mari
 - All subquery types: 5/5 working (100% success)
 
 ### 0.5. TRANSLATION-ONLY ARCHITECTURE - CRITICAL
-- **NO QUERY PROCESSING** in Python client - this is ONLY a translation service
+- **NO DATA PROCESSING IN CLIENT** - The Python client is ONLY a translator, never a processor
 - **ALL DATA PROCESSING** must occur in MongoDB using aggregation pipelines, queries, and operators
 - **TRANSLATE TO MONGODB OPERATIONS** - convert SQL to MongoDB queries that MongoDB executes
-- **NEVER** execute subqueries, functions, or data processing in Python
+- **NEVER** execute subqueries, functions, calculations, or data processing in Python
+- **NO CLIENT-SIDE CALCULATIONS** - No math, string manipulation, date arithmetic, or expression evaluation in Python
+- **NO JAVASCRIPT FUNCTIONS** - Never use MongoDB `$function` operator with JavaScript code
+- **NO EXPRESSION EVALUATION** - Client must not evaluate MongoDB expressions, only generate them
 - **EXAMPLE**: Subqueries → `$lookup` stages, Functions → `$expr` operations, JOINs → `$lookup` pipelines
 - **SUCCESS EXAMPLE**: DERIVED subqueries → complex `$lookup` with `$group` subpipelines + `$unwind` + `$project`
-- The client translates SQL syntax to MongoDB syntax - MongoDB does all the work
+- **ABSOLUTE RULE**: The client translates SQL syntax to MongoDB syntax - MongoDB does ALL the work
 
 ### 0.6. MODULAR ARCHITECTURE - CRITICAL
 - **MODULES MUST WORK TOGETHER** - Never build modules in isolation that only handle simple cases

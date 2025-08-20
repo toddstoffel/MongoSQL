@@ -139,10 +139,16 @@ class MariaDBQARunner:
             "distinct": self._get_distinct_tests(),
             "conditional": self._get_conditional_tests(),
             "subqueries": self._get_subquery_tests(),
-            # Phase 2: Modern Application Extensions
+            # Phase 2: Modern Application Extensions (Complete)
             "json": self._get_json_tests(),
             "extended_string": self._get_extended_string_tests(),
             "enhanced_aggregate": self._get_enhanced_aggregate_tests(),
+            # Phase 3: Enterprise Extensions (In Development)
+            "window": self._get_window_tests(),
+            "cte": self._get_cte_tests(),
+            "fulltext": self._get_fulltext_tests(),
+            "geospatial": self._get_geospatial_tests(),
+            "encryption": self._get_encryption_tests(),
         }
 
     def connect_to_mariadb(self) -> bool:
@@ -797,6 +803,126 @@ class MariaDBQARunner:
             ),
         ]
 
+    def _get_window_tests(self):
+        """Get Phase 3 window function tests (Enterprise Extensions)"""
+        return [
+            # ROW_NUMBER() function
+            (
+                "SELECT customerName, ROW_NUMBER() OVER (ORDER BY creditLimit DESC) AS row_num FROM customers ORDER BY row_num LIMIT 3",
+                "WINDOW_ROW_NUMBER",
+            ),
+            # RANK() function
+            (
+                "SELECT customerName, RANK() OVER (ORDER BY creditLimit DESC) AS rank_num FROM customers ORDER BY rank_num LIMIT 3",
+                "WINDOW_RANK",
+            ),
+            # DENSE_RANK() function
+            (
+                "SELECT customerName, DENSE_RANK() OVER (ORDER BY creditLimit DESC) AS dense_rank FROM customers ORDER BY dense_rank LIMIT 3",
+                "WINDOW_DENSE_RANK",
+            ),
+            # NTILE() function
+            (
+                "SELECT customerName, NTILE(4) OVER (ORDER BY creditLimit) AS quartile FROM customers ORDER BY quartile, customerName LIMIT 5",
+                "WINDOW_NTILE",
+            ),
+            # LAG() function
+            (
+                "SELECT customerName, creditLimit, LAG(creditLimit, 1) OVER (ORDER BY creditLimit) AS prev_credit FROM customers ORDER BY creditLimit LIMIT 5",
+                "WINDOW_LAG",
+            ),
+            # LEAD() function
+            (
+                "SELECT customerName, creditLimit, LEAD(creditLimit, 1) OVER (ORDER BY creditLimit) AS next_credit FROM customers ORDER BY creditLimit LIMIT 5",
+                "WINDOW_LEAD",
+            ),
+        ]
+
+    def _get_cte_tests(self):
+        """Get Phase 3 Common Table Expression tests (Enterprise Extensions)"""
+        return [
+            # Basic CTE
+            (
+                "WITH high_credit AS (SELECT customerName, creditLimit FROM customers WHERE creditLimit > 100000) SELECT customerName FROM high_credit ORDER BY customerName LIMIT 3",
+                "CTE_BASIC",
+            ),
+            # Recursive CTE (employee hierarchy simulation)
+            (
+                "WITH RECURSIVE emp_hierarchy AS (SELECT customerNumber, customerName, 1 as level FROM customers WHERE customerNumber = 103 UNION ALL SELECT c.customerNumber, c.customerName, eh.level + 1 FROM customers c JOIN emp_hierarchy eh ON c.customerNumber = eh.customerNumber + 1 WHERE eh.level < 3) SELECT customerName, level FROM emp_hierarchy ORDER BY level, customerName",
+                "CTE_RECURSIVE",
+            ),
+            # Multiple CTEs
+            (
+                "WITH usa_customers AS (SELECT customerName, creditLimit FROM customers WHERE country = 'USA'), high_credit AS (SELECT customerName FROM usa_customers WHERE creditLimit > 75000) SELECT customerName FROM high_credit ORDER BY customerName LIMIT 3",
+                "CTE_MULTIPLE",
+            ),
+        ]
+
+    def _get_fulltext_tests(self):
+        """Get Phase 3 full-text search tests (Enterprise Extensions)"""
+        return [
+            # MATCH AGAINST boolean mode
+            (
+                "SELECT customerName FROM customers WHERE MATCH(customerName) AGAINST('Auto*' IN BOOLEAN MODE) ORDER BY customerName LIMIT 3",
+                "FULLTEXT_BOOLEAN",
+            ),
+            # MATCH AGAINST natural language
+            (
+                "SELECT customerName FROM customers WHERE MATCH(customerName) AGAINST('Motor Company') ORDER BY customerName LIMIT 3",
+                "FULLTEXT_NATURAL",
+            ),
+            # MATCH AGAINST with query expansion
+            (
+                "SELECT customerName FROM customers WHERE MATCH(customerName) AGAINST('Auto' WITH QUERY EXPANSION) ORDER BY customerName LIMIT 3",
+                "FULLTEXT_EXPANSION",
+            ),
+        ]
+
+    def _get_geospatial_tests(self):
+        """Get Phase 3 geospatial function tests (Enterprise Extensions)"""
+        return [
+            # ST_Distance function
+            (
+                "SELECT customerName, ST_Distance(POINT(-122.4194, 37.7749), POINT(-74.0059, 40.7128)) AS distance FROM customers ORDER BY customerName LIMIT 3",
+                "GEO_DISTANCE",
+            ),
+            # ST_Contains function
+            (
+                "SELECT customerName FROM customers WHERE ST_Contains(ST_GeomFromText('POLYGON((-125 25, -125 50, -65 50, -65 25, -125 25))'), POINT(-122, 37)) ORDER BY customerName LIMIT 3",
+                "GEO_CONTAINS",
+            ),
+            # ST_Within function
+            (
+                "SELECT customerName FROM customers WHERE ST_Within(POINT(-122, 37), ST_GeomFromText('POLYGON((-125 25, -125 50, -65 50, -65 25, -125 25))')) ORDER BY customerName LIMIT 3",
+                "GEO_WITHIN",
+            ),
+        ]
+
+    def _get_encryption_tests(self):
+        """Get Phase 3 encryption function tests (Enterprise Extensions)"""
+        return [
+            # AES_ENCRYPT function
+            (
+                "SELECT AES_ENCRYPT('sensitive data', 'encryption_key') AS encrypted_data FROM customers LIMIT 1",
+                "ENCRYPT_AES",
+            ),
+            # MD5 hash function
+            (
+                "SELECT customerName, MD5(customerName) AS name_hash FROM customers ORDER BY customerName LIMIT 3",
+                "ENCRYPT_MD5",
+            ),
+            # SHA1 hash function
+            (
+                "SELECT customerName, SHA1(customerName) AS name_sha1 FROM customers ORDER BY customerName LIMIT 3",
+                "ENCRYPT_SHA1",
+            ),
+            # SHA2 hash function
+            (
+                "SELECT customerName, SHA2(customerName, 256) AS name_sha256 FROM customers ORDER BY customerName LIMIT 3",
+                "ENCRYPT_SHA2",
+            ),
+        ]
+
 
 def main():
     """Main entry point"""
@@ -805,13 +931,13 @@ def main():
     )
     parser.add_argument(
         "--category",
-        help="Test category to run (case insensitive): datetime, string, math, aggregate, joins, groupby, orderby, distinct, conditional, subqueries, json, extended_string, enhanced_aggregate, all. Cannot be used with --phase.",
+        help="Test category to run (case insensitive): datetime, string, math, aggregate, joins, groupby, orderby, distinct, conditional, subqueries, json, extended_string, enhanced_aggregate, window, cte, fulltext, geospatial, encryption, all. Cannot be used with --phase.",
     )
     parser.add_argument(
         "--phase",
         type=int,
-        choices=[1, 2],
-        help="Test all categories for a specific phase: 1 (Core SQL Features) or 2 (Modern Application Extensions). Cannot be used with --category or --function.",
+        choices=[1, 2, 3],
+        help="Test all categories for a specific phase: 1 (Core SQL Features), 2 (Modern Application Extensions), or 3 (Enterprise Extensions). Cannot be used with --category or --function.",
     )
     parser.add_argument(
         "--function",
@@ -851,6 +977,7 @@ def main():
             "subqueries",
         ],
         2: ["json", "extended_string", "enhanced_aggregate"],
+        3: ["window", "cte", "fulltext", "geospatial", "encryption"],
     }
 
     # Convert category to lowercase for case-insensitive matching if provided
@@ -884,6 +1011,12 @@ def main():
             "json",
             "extended_string",
             "enhanced_aggregate",
+            # Phase 3: Enterprise Extensions
+            "window",
+            "cte",
+            "fulltext",
+            "geospatial",
+            "encryption",
             # Special
             "all",
         ]

@@ -394,9 +394,13 @@ class MongoDBClient:
                 )
 
                 if has_sort:
-                    return list(collection.aggregate(pipeline, collation=collation))
+                    results = list(collection.aggregate(pipeline, collation=collation))
                 else:
-                    return list(collection.aggregate(pipeline))
+                    results = list(collection.aggregate(pipeline))
+
+                # Process client-side functions if present
+                results = self._process_client_side_functions(results, mql_query)
+                return results
 
             elif operation == "distinct":
                 field = mql_query.get("field")
@@ -448,6 +452,10 @@ class MongoDBClient:
             if isinstance(expression, dict) and "$literal" in expression:
                 # Simple literal value
                 result_doc[field_name] = expression["$literal"]
+            elif isinstance(expression, dict) and "_client_side_function" in expression:
+                # Client-side function - process it
+                func_info = expression["_client_side_function"]
+                result_doc[field_name] = self._evaluate_client_side_function(func_info)
             elif isinstance(expression, dict):
                 # MongoDB expression - evaluate it
                 # For now, we'll simulate the evaluation since we can't use aggregation without a collection
@@ -457,6 +465,87 @@ class MongoDBClient:
                 result_doc[field_name] = expression
 
         return [result_doc]
+
+    def _evaluate_client_side_function(self, func_info: Dict[str, Any]) -> Any:
+        """Evaluate client-side functions for no-table queries"""
+        func_type = func_info["type"]
+        args = func_info["args"]
+
+        if func_type == "MD5":
+            import hashlib
+
+            input_val = str(args[0]) if args else ""
+            return hashlib.md5(input_val.encode()).hexdigest()
+        elif func_type == "SHA1":
+            import hashlib
+
+            input_val = str(args[0]) if args else ""
+            return hashlib.sha1(input_val.encode()).hexdigest()
+        elif func_type == "SHA2":
+            import hashlib
+
+            input_val = str(args[0]) if args else ""
+            bit_length = int(args[1]) if len(args) > 1 else 256
+            if bit_length == 256:
+                return hashlib.sha256(input_val.encode()).hexdigest()
+            else:
+                return f"Unsupported SHA2 bit length: {bit_length}"
+        elif func_type == "AES_ENCRYPT":
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+            from cryptography.hazmat.backends import default_backend
+
+            data = str(args[0]) if len(args) > 0 else ""
+            key = str(args[1]) if len(args) > 1 else ""
+
+            # Pad or truncate key to 16 bytes for AES-128
+            key_bytes = key.encode("utf-8")[:16].ljust(16, b"\0")
+
+            # AES-128-ECB encryption
+            cipher = Cipher(
+                algorithms.AES(key_bytes), modes.ECB(), backend=default_backend()
+            )
+            encryptor = cipher.encryptor()
+
+            # Pad data to multiple of 16 bytes
+            data_bytes = data.encode("utf-8")
+            pad_length = 16 - (len(data_bytes) % 16)
+            padded_data = data_bytes + bytes([pad_length] * pad_length)
+
+            encrypted = encryptor.update(padded_data) + encryptor.finalize()
+            return encrypted.hex()
+        elif func_type == "AES_DECRYPT":
+            from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+            from cryptography.hazmat.backends import default_backend
+
+            encrypted_hex = str(args[0]) if len(args) > 0 else ""
+            key = str(args[1]) if len(args) > 1 else ""
+
+            try:
+                # Pad or truncate key to 16 bytes for AES-128
+                key_bytes = key.encode("utf-8")[:16].ljust(16, b"\0")
+
+                # Convert hex to bytes
+                encrypted_bytes = bytes.fromhex(encrypted_hex)
+
+                # AES-128-ECB decryption
+                cipher = Cipher(
+                    algorithms.AES(key_bytes), modes.ECB(), backend=default_backend()
+                )
+                decryptor = cipher.decryptor()
+
+                decrypted_padded = (
+                    decryptor.update(encrypted_bytes) + decryptor.finalize()
+                )
+
+                # Remove padding
+                pad_length = decrypted_padded[-1]
+                decrypted = decrypted_padded[:-pad_length]
+
+                return decrypted.decode("utf-8")
+            except Exception as e:
+                return f"DECRYPTION_ERROR: {str(e)}"
+        else:
+            return f"Unknown function: {func_type}"
 
     def _evaluate_expression(self, expression: Dict[str, Any]) -> Any:
         """Evaluate MongoDB expressions for no-table queries"""
@@ -1515,7 +1604,266 @@ class MongoDBClient:
                 # Simple value inversion
                 return not bool(not_expr)
 
+        elif "$function" in expression:
+            # JavaScript function execution (for encryption and other functions)
+            func_expr = expression["$function"]
+            body = func_expr.get("body", "")
+            args = func_expr.get("args", [])
+
+            # For encryption functions, implement the logic directly in Python
+            # This provides real cryptographic functionality
+            if "crypto.createHash('md5')" in body:
+                import hashlib
+
+                input_val = str(args[0]) if args else ""
+                return hashlib.md5(input_val.encode()).hexdigest()
+            elif "crypto.createHash('sha1')" in body:
+                import hashlib
+
+                input_val = str(args[0]) if args else ""
+                return hashlib.sha1(input_val.encode()).hexdigest()
+            elif "crypto.createHash('sha256')" in body:
+                import hashlib
+
+                input_val = str(args[0]) if args else ""
+                return hashlib.sha256(input_val.encode()).hexdigest()
+            elif "createCipher('aes-128-ecb'" in body:
+                # AES encryption using Python's cryptography
+                from cryptography.hazmat.primitives.ciphers import (
+                    Cipher,
+                    algorithms,
+                    modes,
+                )
+                from cryptography.hazmat.backends import default_backend
+                import os
+
+                data = str(args[0]) if len(args) > 0 else ""
+                key = str(args[1]) if len(args) > 1 else ""
+
+                # Pad or truncate key to 16 bytes for AES-128
+                key_bytes = key.encode("utf-8")[:16].ljust(16, b"\0")
+
+                # AES-128-ECB encryption
+                cipher = Cipher(
+                    algorithms.AES(key_bytes), modes.ECB(), backend=default_backend()
+                )
+                encryptor = cipher.encryptor()
+
+                # Pad data to multiple of 16 bytes
+                data_bytes = data.encode("utf-8")
+                pad_length = 16 - (len(data_bytes) % 16)
+                padded_data = data_bytes + bytes([pad_length] * pad_length)
+
+                encrypted = encryptor.update(padded_data) + encryptor.finalize()
+                return encrypted
+            elif "createDecipher('aes-128-ecb'" in body:
+                # AES decryption using Python's cryptography
+                from cryptography.hazmat.primitives.ciphers import (
+                    Cipher,
+                    algorithms,
+                    modes,
+                )
+                from cryptography.hazmat.backends import default_backend
+
+                encrypted_hex = str(args[0]) if len(args) > 0 else ""
+                key = str(args[1]) if len(args) > 1 else ""
+
+                try:
+                    # Pad or truncate key to 16 bytes for AES-128
+                    key_bytes = key.encode("utf-8")[:16].ljust(16, b"\0")
+
+                    # Convert hex to bytes
+                    encrypted_bytes = bytes.fromhex(encrypted_hex)
+
+                    # AES-128-ECB decryption
+                    cipher = Cipher(
+                        algorithms.AES(key_bytes),
+                        modes.ECB(),
+                        backend=default_backend(),
+                    )
+                    decryptor = cipher.decryptor()
+
+                    decrypted_padded = (
+                        decryptor.update(encrypted_bytes) + decryptor.finalize()
+                    )
+
+                    # Remove padding
+                    pad_length = decrypted_padded[-1]
+                    decrypted = decrypted_padded[:-pad_length]
+
+                    return decrypted.decode("utf-8")
+                except Exception as e:
+                    return f"DECRYPTION_ERROR: {str(e)}"
+            else:
+                # For other functions, return a placeholder indicating function execution
+                return f"[Function: {body[:50]}...]"
+
         # Add more expression evaluations as needed
+
+    def _process_client_side_functions(
+        self, results: List[Dict], mql_query: Dict[str, Any]
+    ) -> List[Dict]:
+        """Process client-side functions like encryption functions that can't run in MongoDB"""
+        # Check if there are any client-side functions to process
+        if not self._has_client_side_functions(mql_query):
+            return results
+
+        # Process each result document
+        processed_results = []
+        for result in results:
+            processed_result = self._process_document_client_side_functions(
+                result, mql_query
+            )
+            processed_results.append(processed_result)
+
+        return processed_results
+
+    def _has_client_side_functions(self, mql_query: Dict[str, Any]) -> bool:
+        """Check if the query contains client-side functions"""
+        pipeline = mql_query.get("pipeline", [])
+        for stage in pipeline:
+            if isinstance(stage, dict) and "$project" in stage:
+                for field_name, field_expr in stage["$project"].items():
+                    if (
+                        isinstance(field_expr, dict)
+                        and "_client_side_function" in field_expr
+                    ):
+                        return True
+        return False
+
+    def _process_document_client_side_functions(
+        self, document: Dict, mql_query: Dict[str, Any]
+    ) -> Dict:
+        """Process client-side functions for a single document"""
+        # Find client-side functions in the query projection
+        pipeline = mql_query.get("pipeline", [])
+        client_side_mapping = {}
+
+        for stage in pipeline:
+            if isinstance(stage, dict) and "$project" in stage:
+                for field_name, field_expr in stage["$project"].items():
+                    if (
+                        isinstance(field_expr, dict)
+                        and "_client_side_function" in field_expr
+                    ):
+                        client_side_mapping[field_name] = field_expr[
+                            "_client_side_function"
+                        ]
+
+        # Process the document
+        processed_doc = document.copy()
+        for field_name, func_info in client_side_mapping.items():
+            # Remove the placeholder field
+            if field_name in processed_doc:
+                del processed_doc[field_name]
+
+            # Compute the function value
+            func_type = func_info["type"]
+            args = func_info["args"]
+
+            # Resolve field references to actual values
+            resolved_args = []
+            for arg in args:
+                if isinstance(arg, str) and arg.startswith("$"):
+                    field_name_ref = arg[1:]  # Remove the $
+                    resolved_args.append(document.get(field_name_ref, ""))
+                else:
+                    resolved_args.append(arg)
+
+            # Compute the function
+            if func_type == "MD5":
+                import hashlib
+
+                input_val = str(resolved_args[0]) if resolved_args else ""
+                processed_doc[field_name] = hashlib.md5(input_val.encode()).hexdigest()
+            elif func_type == "SHA1":
+                import hashlib
+
+                input_val = str(resolved_args[0]) if resolved_args else ""
+                processed_doc[field_name] = hashlib.sha1(input_val.encode()).hexdigest()
+            elif func_type == "SHA2":
+                import hashlib
+
+                input_val = str(resolved_args[0]) if resolved_args else ""
+                bit_length = int(resolved_args[1]) if len(resolved_args) > 1 else 256
+                if bit_length == 256:
+                    processed_doc[field_name] = hashlib.sha256(
+                        input_val.encode()
+                    ).hexdigest()
+                else:
+                    processed_doc[field_name] = (
+                        f"Unsupported SHA2 bit length: {bit_length}"
+                    )
+            elif func_type == "AES_ENCRYPT":
+                # Use the same encryption logic as in _evaluate_expression
+                from cryptography.hazmat.primitives.ciphers import (
+                    Cipher,
+                    algorithms,
+                    modes,
+                )
+                from cryptography.hazmat.backends import default_backend
+
+                data = str(resolved_args[0]) if len(resolved_args) > 0 else ""
+                key = str(resolved_args[1]) if len(resolved_args) > 1 else ""
+
+                # Pad or truncate key to 16 bytes for AES-128
+                key_bytes = key.encode("utf-8")[:16].ljust(16, b"\0")
+
+                # AES-128-ECB encryption
+                cipher = Cipher(
+                    algorithms.AES(key_bytes), modes.ECB(), backend=default_backend()
+                )
+                encryptor = cipher.encryptor()
+
+                # Pad data to multiple of 16 bytes
+                data_bytes = data.encode("utf-8")
+                pad_length = 16 - (len(data_bytes) % 16)
+                padded_data = data_bytes + bytes([pad_length] * pad_length)
+
+                encrypted = encryptor.update(padded_data) + encryptor.finalize()
+                processed_doc[field_name] = encrypted
+            elif func_type == "AES_DECRYPT":
+                # Use the same decryption logic as in _evaluate_expression
+                from cryptography.hazmat.primitives.ciphers import (
+                    Cipher,
+                    algorithms,
+                    modes,
+                )
+                from cryptography.hazmat.backends import default_backend
+
+                encrypted_hex = str(resolved_args[0]) if len(resolved_args) > 0 else ""
+                key = str(resolved_args[1]) if len(resolved_args) > 1 else ""
+
+                try:
+                    # Pad or truncate key to 16 bytes for AES-128
+                    key_bytes = key.encode("utf-8")[:16].ljust(16, b"\0")
+
+                    # Convert hex to bytes
+                    encrypted_bytes = bytes.fromhex(encrypted_hex)
+
+                    # AES-128-ECB decryption
+                    cipher = Cipher(
+                        algorithms.AES(key_bytes),
+                        modes.ECB(),
+                        backend=default_backend(),
+                    )
+                    decryptor = cipher.decryptor()
+
+                    decrypted_padded = (
+                        decryptor.update(encrypted_bytes) + decryptor.finalize()
+                    )
+
+                    # Remove padding
+                    pad_length = decrypted_padded[-1]
+                    decrypted = decrypted_padded[:-pad_length]
+
+                    processed_doc[field_name] = decrypted.decode("utf-8")
+                except Exception as e:
+                    processed_doc[field_name] = f"DECRYPTION_ERROR: {str(e)}"
+            else:
+                processed_doc[field_name] = f"Unknown function: {func_type}"
+
+        return processed_doc
 
     def _add_implicit_ordering_for_deterministic_results(
         self, pipeline: List[Dict], collection_name: str

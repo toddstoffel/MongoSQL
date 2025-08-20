@@ -1,6 +1,7 @@
 """
 Main CLI module for mongosql client
 """
+
 import click
 import os
 import sys
@@ -16,53 +17,65 @@ _sql_translator = None
 _mariadb_formatter = None
 _utils_imported = False
 
+
 def get_mongodb_client():
     """Lazy load MongoDB client"""
     global _mongodb_client
     if _mongodb_client is None:
         from ..database.mongodb_client import MongoDBClient
+
         _mongodb_client = MongoDBClient
     return _mongodb_client
+
 
 def get_sql_parser():
     """Lazy load SQL parser"""
     global _sql_parser
     if _sql_parser is None:
         from ..core.parser import TokenBasedSQLParser
+
         _sql_parser = TokenBasedSQLParser()
     return _sql_parser
+
 
 def get_sql_translator():
     """Lazy load SQL translator"""
     global _sql_translator
     if _sql_translator is None:
         from ..core.translator import MongoSQLTranslator
+
         _sql_translator = MongoSQLTranslator()
     return _sql_translator
+
 
 def get_mariadb_formatter():
     """Lazy load MariaDB formatter"""
     global _mariadb_formatter
     if _mariadb_formatter is None:
         from ..formatters.mariadb_formatter import MariaDBFormatter
+
         _mariadb_formatter = MariaDBFormatter()
     return _mariadb_formatter
+
 
 def ensure_utils_imported():
     """Database-agnostic formatting - no hardcoded schemas needed"""
     global _utils_imported
     _utils_imported = True  # No schema dependencies needed
 
+
 def format_value(column_name, value):
     """Generic value formatting without hardcoded schemas"""
     if value is None:
-        return ''
+        return ""
 
     # Apply MariaDB-compatible precision for statistical functions
-    if isinstance(value, (int, float)) and ('STDDEV' in column_name.upper() or 'VAR_' in column_name.upper()):
+    if isinstance(value, (int, float)) and (
+        "STDDEV" in column_name.upper() or "VAR_" in column_name.upper()
+    ):
         # Round to 6 decimal places to match MariaDB precision
         try:
-            formatted = f"{float(value):.6f}".rstrip('0').rstrip('.')
+            formatted = f"{float(value):.6f}".rstrip("0").rstrip(".")
             return formatted
         except:
             pass
@@ -70,7 +83,10 @@ def format_value(column_name, value):
     # Format numeric values consistently
     if isinstance(value, float):
         # For monetary values, use 2 decimal places if they look like money
-        if any(keyword in column_name.lower() for keyword in ['price', 'cost', 'amount', 'credit', 'limit']):
+        if any(
+            keyword in column_name.lower()
+            for keyword in ["price", "cost", "amount", "credit", "limit"]
+        ):
             return f"{value:.2f}"
         # For other floats, remove unnecessary decimals
         if value == int(value):
@@ -78,6 +94,7 @@ def format_value(column_name, value):
         return str(value)
 
     return str(value)
+
 
 def is_numeric_column(column_name, value=None):
     """Check if a column should be right-aligned (numeric) - generic detection"""
@@ -88,7 +105,7 @@ def is_numeric_column(column_name, value=None):
                 return True
             elif isinstance(value, str):
                 # Check if string represents a number
-                if value.replace('.', '').replace('-', '').isdigit():
+                if value.replace(".", "").replace("-", "").isdigit():
                     return True
                 try:
                     float(value)
@@ -99,21 +116,32 @@ def is_numeric_column(column_name, value=None):
             pass
 
     # Check column name patterns that suggest numeric data
-    numeric_patterns = ['number', 'id', 'code', 'quantity', 'price', 'amount', 'limit', 'count']
+    numeric_patterns = [
+        "number",
+        "id",
+        "code",
+        "quantity",
+        "price",
+        "amount",
+        "limit",
+        "count",
+    ]
     column_lower = column_name.lower()
     return any(pattern in column_lower for pattern in numeric_patterns)
+
 
 # Load environment variables only when needed
 load_dotenv()
 
+
 @click.command()
-@click.argument('database', required=False)
-@click.option('--host', '-h', default=None, help='MongoDB host')
-@click.option('--port', '-P', default=None, help='MongoDB port')
-@click.option('--username', '-u', default=None, help='Username')
-@click.option('--password', '-p', is_flag=True, help='Prompt for password')
-@click.option('--execute', '-e', help='Execute statement and exit')
-@click.option('--batch', is_flag=True, help='Run in batch mode (non-interactive)')
+@click.argument("database", required=False)
+@click.option("--host", "-h", default=None, help="MongoDB host")
+@click.option("--port", "-P", default=None, help="MongoDB port")
+@click.option("--username", "-u", default=None, help="Username")
+@click.option("--password", "-p", is_flag=True, help="Prompt for password")
+@click.option("--execute", "-e", help="Execute statement and exit")
+@click.option("--batch", is_flag=True, help="Run in batch mode (non-interactive)")
 def main(database, host, port, username, password, execute, batch):
     """MongoSQL - A command-line client that translates SQL to MongoDB queries
 
@@ -124,11 +152,17 @@ def main(database, host, port, username, password, execute, batch):
     is_piped_input = not sys.stdin.isatty()
 
     # Get connection parameters
-    mongo_host = host or os.getenv('MONGO_HOST') or os.getenv('MONGODB_HOST', 'localhost')
-    mongo_port = int(port or os.getenv('MONGO_PORT') or os.getenv('MONGODB_PORT', 27017))
-    mongo_db = database or os.getenv('MONGO_DATABASE') or os.getenv('MONGODB_DATABASE')
-    mongo_user = username or os.getenv('MONGO_USERNAME') or os.getenv('MONGODB_USERNAME')
-    mongo_pass = os.getenv('MONGO_PASSWORD') or os.getenv('MONGODB_PASSWORD')
+    mongo_host = (
+        host or os.getenv("MONGO_HOST") or os.getenv("MONGODB_HOST", "localhost")
+    )
+    mongo_port = int(
+        port or os.getenv("MONGO_PORT") or os.getenv("MONGODB_PORT", 27017)
+    )
+    mongo_db = database or os.getenv("MONGO_DATABASE") or os.getenv("MONGODB_DATABASE")
+    mongo_user = (
+        username or os.getenv("MONGO_USERNAME") or os.getenv("MONGODB_USERNAME")
+    )
+    mongo_pass = os.getenv("MONGO_PASSWORD") or os.getenv("MONGODB_PASSWORD")
 
     if password:
         mongo_pass = getpass.getpass("Enter password: ")
@@ -143,7 +177,7 @@ def main(database, host, port, username, password, execute, batch):
             port=mongo_port,
             database=mongo_db,
             username=mongo_user,
-            password=mongo_pass
+            password=mongo_pass,
         )
         sql_parser = get_sql_parser()
         translator = get_sql_translator()
@@ -157,7 +191,14 @@ def main(database, host, port, username, password, execute, batch):
 
         if execute:
             # Execute single statement and exit
-            execute_statement(execute, sql_parser, translator, db_client, silent=False, is_execute_mode=True)
+            execute_statement(
+                execute,
+                sql_parser,
+                translator,
+                db_client,
+                silent=False,
+                is_execute_mode=True,
+            )
         elif batch or is_piped_input:
             # Batch mode - read from stdin (silent for piped input)
             run_batch_mode(sql_parser, translator, db_client, silent=is_piped_input)
@@ -175,24 +216,40 @@ def main(database, host, port, username, password, execute, batch):
         else:
             # Legacy error handling
             error_msg_lower = error_msg.lower()
-            if 'authentication failed' in error_msg_lower or 'access denied' in error_msg_lower or 'unauthorized' in error_msg_lower:
+            if (
+                "authentication failed" in error_msg_lower
+                or "access denied" in error_msg_lower
+                or "unauthorized" in error_msg_lower
+            ):
                 # Authentication error - format like MySQL
-                username_display = mongo_user or 'unknown'
+                username_display = mongo_user or "unknown"
                 import socket
+
                 hostname = socket.gethostname()
-                print(f"ERROR 1045 (28000): Access denied for user '{username_display}'@'{hostname}' (using password: {'YES' if mongo_pass else 'NO'})", file=sys.stderr)
-            elif 'connection' in error_msg_lower or 'timeout' in error_msg_lower or 'refused' in error_msg_lower:
+                print(
+                    f"ERROR 1045 (28000): Access denied for user '{username_display}'@'{hostname}' (using password: {'YES' if mongo_pass else 'NO'})",
+                    file=sys.stderr,
+                )
+            elif (
+                "connection" in error_msg_lower
+                or "timeout" in error_msg_lower
+                or "refused" in error_msg_lower
+            ):
                 # Connection error - format like MySQL
-                print(f"ERROR 2003 (HY000): Can't connect to MongoDB server on '{mongo_host}' ({mongo_port})", file=sys.stderr)
+                print(
+                    f"ERROR 2003 (HY000): Can't connect to MongoDB server on '{mongo_host}' ({mongo_port})",
+                    file=sys.stderr,
+                )
             else:
                 # Generic error
                 print(f"ERROR: {error_msg}", file=sys.stderr)
         return 1
     finally:
-        if 'db_client' in locals():
+        if "db_client" in locals():
             db_client.close()
 
     return 0
+
 
 def print_welcome():
     """Print MariaDB-style welcome message"""
@@ -202,10 +259,21 @@ def print_welcome():
     print(f"")
     print(f"Copyright (c) 2025, MongoSQL contributors")
     print(f"")
-    print(f"Type 'help;' or '\\h' for help. Type '\\c' to clear the current input statement.")
+    print(
+        f"Type 'help;' or '\\h' for help. Type '\\c' to clear the current input statement."
+    )
     print()
 
-def execute_statement(sql, parser, translator, db_client, vertical_format=False, silent=False, is_execute_mode=False):
+
+def execute_statement(
+    sql,
+    parser,
+    translator,
+    db_client,
+    vertical_format=False,
+    silent=False,
+    is_execute_mode=False,
+):
     """Execute a single SQL statement"""
 
     # Get the MariaDB formatter
@@ -217,19 +285,19 @@ def execute_statement(sql, parser, translator, db_client, vertical_format=False,
     formatter.set_mode(
         is_execute_mode=is_execute_mode,
         is_piped_input=is_piped_input,
-        is_interactive=is_interactive
+        is_interactive=is_interactive,
     )
 
     try:
         # Remove trailing semicolon if present
         original_sql = sql
-        sql = sql.rstrip(';')
+        sql = sql.rstrip(";")
 
         # Check for \G terminator (vertical format)
-        if sql.endswith('\\G'):
+        if sql.endswith("\\G"):
             sql = sql[:-2].strip()
             vertical_format = True
-        elif sql.endswith('\\g'):
+        elif sql.endswith("\\g"):
             sql = sql[:-2].strip()
 
         # Start timing
@@ -240,15 +308,30 @@ def execute_statement(sql, parser, translator, db_client, vertical_format=False,
 
         # Add original SQL to parsed result for ORDER BY processing
         if isinstance(parsed, dict):
-            parsed['original_sql'] = sql
+            parsed["original_sql"] = sql
+
+        # Check if we need CTE preprocessing for complex CTEs
+        try:
+            from ..modules.cte import needs_cte_preprocessing, preprocess_cte_if_needed
+
+            if needs_cte_preprocessing(sql):
+                # Preprocess complex CTEs to make them compatible with existing system
+                sql = preprocess_cte_if_needed(sql)
+                # Re-parse the preprocessed SQL
+                parsed = parser.parse(sql)
+                if isinstance(parsed, dict):
+                    parsed["original_sql"] = sql
+        except ImportError:
+            # CTE module not available, continue with standard processing
+            pass
 
         # Check if we need enhanced parsing for REGEXP expressions
         needs_enhanced_parsing = False
-        if hasattr(parser, 'has_enhanced_expressions'):
+        if hasattr(parser, "has_enhanced_expressions"):
             needs_enhanced_parsing = parser.has_enhanced_expressions(sql)
 
         # Use enhanced parsing if needed and available
-        if needs_enhanced_parsing and hasattr(parser, 'parse_with_expressions'):
+        if needs_enhanced_parsing and hasattr(parser, "parse_with_expressions"):
             try:
                 enhanced_parsed = parser.parse_with_expressions(sql)
                 if enhanced_parsed:
@@ -258,7 +341,9 @@ def execute_statement(sql, parser, translator, db_client, vertical_format=False,
                 pass
 
         # Choose translator method based on parsed content
-        if hasattr(translator, 'can_use_enhanced_translation') and translator.can_use_enhanced_translation(parsed):
+        if hasattr(
+            translator, "can_use_enhanced_translation"
+        ) and translator.can_use_enhanced_translation(parsed):
             mql_query = translator.translate_with_expressions(parsed)
         else:
             # Translate to MQL using standard method
@@ -272,28 +357,32 @@ def execute_statement(sql, parser, translator, db_client, vertical_format=False,
 
         # Format successful output using the modular formatter
         if not silent:
-            formatter.format_success_output(result, mql_query, execution_time, parsed, vertical_format)
+            formatter.format_success_output(
+                result, mql_query, execution_time, parsed, vertical_format
+            )
 
     except Exception as e:
         if not silent:
             formatter.format_error_output(str(e), original_sql)
 
+
 def run_batch_mode(parser, translator, db_client, silent=False):
     """Run in batch mode reading from stdin"""
     for line in sys.stdin:
         line = line.strip()
-        if line and not line.startswith('#'):
+        if line and not line.startswith("#"):
             execute_statement(line, parser, translator, db_client, silent=silent)
+
 
 def run_interactive_mode(parser, translator, db_client):
     """Run in interactive mode"""
 
     # Configure readline for command history and arrow keys
-    readline.parse_and_bind('tab: complete')
-    readline.parse_and_bind('set editing-mode emacs')
+    readline.parse_and_bind("tab: complete")
+    readline.parse_and_bind("set editing-mode emacs")
 
     # Set up history file
-    history_file = os.path.expanduser('~/.mongosql_history')
+    history_file = os.path.expanduser("~/.mongosql_history")
     try:
         readline.read_history_file(history_file)
         # Limit history to 1000 entries
@@ -317,36 +406,49 @@ def run_interactive_mode(parser, translator, db_client):
 
                 # Handle \g and \G terminators (equivalent to semicolon in MySQL)
                 vertical_format = False
-                if sql.endswith('\\G'):
+                if sql.endswith("\\G"):
                     sql = sql[:-2].strip()  # Remove \G and execute with vertical format
                     vertical_format = True
-                elif sql.endswith('\\g'):
+                elif sql.endswith("\\g"):
                     sql = sql[:-2].strip()  # Remove \g and execute
-                elif sql in ['\\G', '\\g']:
+                elif sql in ["\\G", "\\g"]:
                     # Just \G or \g by itself - nothing to execute
                     continue
 
                 # Handle special commands
-                if sql.lower() in ['quit', 'exit', 'q', '\\q']:
+                if sql.lower() in ["quit", "exit", "q", "\\q"]:
                     print("Bye")
                     break
-                elif sql.lower() in ['help', 'help;', 'help\\g', 'help\\G']:
+                elif sql.lower() in ["help", "help;", "help\\g", "help\\G"]:
                     show_help()
                     continue
-                elif sql.lower() in ['show tables', 'show tables;', 'show tables\\g', 'show tables\\G',
-                                     'show collections', 'show collections;', 'show collections\\g', 'show collections\\G']:
+                elif sql.lower() in [
+                    "show tables",
+                    "show tables;",
+                    "show tables\\g",
+                    "show tables\\G",
+                    "show collections",
+                    "show collections;",
+                    "show collections\\g",
+                    "show collections\\G",
+                ]:
                     show_collections(db_client)
                     continue
-                elif sql.lower() in ['show databases', 'show databases;', 'show databases\\g', 'show databases\\G']:
+                elif sql.lower() in [
+                    "show databases",
+                    "show databases;",
+                    "show databases\\g",
+                    "show databases\\G",
+                ]:
                     show_databases(db_client)
                     continue
-                elif sql.lower().startswith('use '):
-                    db_name = sql[4:].strip().rstrip(';').rstrip('\\g').rstrip('\\G')
+                elif sql.lower().startswith("use "):
+                    db_name = sql[4:].strip().rstrip(";").rstrip("\\g").rstrip("\\G")
                     db_client.switch_database(db_name)
                     print()  # Blank line before message
                     print(f"Database changed")
                     continue
-                elif sql == '\\c':
+                elif sql == "\\c":
                     print("Query buffer cleared.")
                     continue
 
@@ -365,6 +467,7 @@ def run_interactive_mode(parser, translator, db_client):
         except:
             pass
 
+
 def show_help():
     """Display help information in MySQL style"""
     print()
@@ -382,13 +485,14 @@ def show_help():
     print("For server side help, type 'help contents'")
     print()
 
+
 def show_collections(db_client):
     """Show available collections in MySQL style"""
     try:
         collections = db_client.get_collections()
         if collections:
             # Calculate proper column width
-            db_name = db_client.database_name or 'db'
+            db_name = db_client.database_name or "db"
             header = f"Collections_in_{db_name}"
 
             # Find the maximum width needed
@@ -401,7 +505,7 @@ def show_collections(db_client):
             max_width = max(max_width, 20)
 
             # Print table with proper width
-            border = '+' + '-' * (max_width + 2) + '+'
+            border = "+" + "-" * (max_width + 2) + "+"
             print(border)
             print(f"| {header:<{max_width}} |")
             print(border)
@@ -414,6 +518,7 @@ def show_collections(db_client):
             print()
     except Exception as e:
         print(f"ERROR: {e}")
+
 
 def show_databases(db_client):
     """Show available databases in MySQL style"""
@@ -433,7 +538,7 @@ def show_databases(db_client):
             max_width = max(max_width, 20)
 
             # Print table with proper width
-            border = '+' + '-' * (max_width + 2) + '+'
+            border = "+" + "-" * (max_width + 2) + "+"
             print(border)
             print(f"| {header:<{max_width}} |")
             print(border)
@@ -448,8 +553,9 @@ def show_databases(db_client):
         print(f"ERROR: {e}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
+
 
 def display_tab_format(results, query_columns=None):
     """Display results in tab-separated format (for piped output, matches MariaDB)"""
@@ -457,18 +563,18 @@ def display_tab_format(results, query_columns=None):
         return
 
     # Determine column order - same logic as table format
-    if query_columns and query_columns != ['*']:
+    if query_columns and query_columns != ["*"]:
         columns = []
         for col in query_columns:
             if isinstance(col, dict):
-                if 'column' in col:
-                    columns.append(col['column'])
-                elif 'function' in col:
-                    if 'original_call' in col:
-                        columns.append(col['original_call'])
+                if "column" in col:
+                    columns.append(col["column"])
+                elif "function" in col:
+                    if "original_call" in col:
+                        columns.append(col["original_call"])
                     else:
-                        func_name = col['function']
-                        args_str = col.get('args_str', '')
+                        func_name = col["function"]
+                        args_str = col.get("args_str", "")
                         if args_str:
                             columns.append(f"{func_name}({args_str})")
                         else:
@@ -478,12 +584,12 @@ def display_tab_format(results, query_columns=None):
                 col_str = str(col)
 
                 # Check if this is an alias expression (e.g., "1 as test")
-                if ' as ' in col_str.lower():
+                if " as " in col_str.lower():
                     # Extract the alias part (case-insensitive)
                     col_lower = col_str.lower()
-                    as_pos = col_lower.rfind(' as ')
+                    as_pos = col_lower.rfind(" as ")
                     if as_pos != -1:
-                        alias_part = col_str[as_pos + 4:].strip()  # +4 for " as "
+                        alias_part = col_str[as_pos + 4 :].strip()  # +4 for " as "
                         columns.append(alias_part)
                     else:
                         columns.append(col_str)
@@ -498,21 +604,30 @@ def display_tab_format(results, query_columns=None):
         columns = list(all_columns)
 
     # Print header (column names)
-    print('\t'.join(columns))
+    print("\t".join(columns))
 
     # Print data rows
     for doc in results:
         row_values = []
         for col in columns:
-            value = doc.get(col, '')
+            value = doc.get(col, "")
             # Format value similar to format_value but simpler for tab output
             if value is None:
-                row_values.append('NULL')
+                row_values.append("NULL")
             else:
                 row_values.append(str(value))
-        print('\t'.join(row_values))
+        print("\t".join(row_values))
 
-def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is_execute_mode=False, silent=False, query_columns=None, table_name=None):
+
+def display_mysql_table(
+    results,
+    is_show_operation=False,
+    execution_time=0.0,
+    is_execute_mode=False,
+    silent=False,
+    query_columns=None,
+    table_name=None,
+):
     """Display results in MySQL/MariaDB table format"""
     ensure_utils_imported()  # Ensure utils are loaded
 
@@ -528,22 +643,22 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
         return
 
     # If query_columns is provided (from SELECT statement), use that order
-    if query_columns and query_columns != ['*']:
+    if query_columns and query_columns != ["*"]:
         # Use the exact column order from the SQL query
         columns = []
         for col in query_columns:
             if isinstance(col, dict):
-                if 'column' in col:
-                    columns.append(col['column'])
-                elif 'function' in col:
+                if "column" in col:
+                    columns.append(col["column"])
+                elif "function" in col:
                     # For function calls, use the original call or generate from parts
-                    if 'original_call' in col:
+                    if "original_call" in col:
                         # Use the exact original function call for the header
-                        columns.append(col['original_call'])
+                        columns.append(col["original_call"])
                     else:
                         # Fallback: reconstruct from function name and args
-                        func_name = col['function']
-                        args_str = col.get('args_str', '')
+                        func_name = col["function"]
+                        args_str = col.get("args_str", "")
                         if args_str:
                             columns.append(f"{func_name}({args_str})")
                         else:
@@ -555,19 +670,19 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
                 col_str = str(col)
 
                 # Check if this is an alias expression (e.g., "1 as test")
-                if ' as ' in col_str.lower():
+                if " as " in col_str.lower():
                     # Extract the alias part (case-insensitive)
                     col_lower = col_str.lower()
-                    as_pos = col_lower.rfind(' as ')
+                    as_pos = col_lower.rfind(" as ")
                     if as_pos != -1:
-                        alias_part = col_str[as_pos + 4:].strip()  # +4 for " as "
+                        alias_part = col_str[as_pos + 4 :].strip()  # +4 for " as "
                         columns.append(alias_part)
                     else:
                         columns.append(col_str)
                 else:
                     # Handle qualified column names (table.column -> column)
-                    if isinstance(col, str) and '.' in col:
-                        col = col.split('.')[-1]
+                    if isinstance(col, str) and "." in col:
+                        col = col.split(".")[-1]
                     columns.append(col_str)
         # Only include columns that actually exist in the results
         columns = [col for col in columns if any(col in doc for doc in results)]
@@ -576,7 +691,7 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
         all_columns = set()
         for doc in results:
             for key in doc.keys():
-                if key != '_id':  # Exclude MongoDB's _id
+                if key != "_id":  # Exclude MongoDB's _id
                     all_columns.add(key)
 
         # Database-agnostic column ordering - no hardcoded schemas
@@ -584,9 +699,17 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
         columns = list(all_columns)
 
         # Simple heuristic ordering without hardcoded schemas
-        id_columns = [col for col in columns if col.lower().endswith('number') or col.lower().endswith('id') or col.lower() == 'id']
-        name_columns = [col for col in columns if 'name' in col.lower()]
-        other_columns = [col for col in columns if col not in id_columns and col not in name_columns]
+        id_columns = [
+            col
+            for col in columns
+            if col.lower().endswith("number")
+            or col.lower().endswith("id")
+            or col.lower() == "id"
+        ]
+        name_columns = [col for col in columns if "name" in col.lower()]
+        other_columns = [
+            col for col in columns if col not in id_columns and col not in name_columns
+        ]
 
         # Order: ID columns first, then name columns, then others alphabetically
         columns = sorted(id_columns) + sorted(name_columns) + sorted(other_columns)
@@ -605,16 +728,16 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
         col_widths[col] = max(col_widths[col], 4)
 
     # Print top border
-    print('+' + '+'.join('-' * (col_widths[col] + 2) for col in columns) + '+')
+    print("+" + "+".join("-" * (col_widths[col] + 2) for col in columns) + "+")
 
     # Print header
     header_parts = []
     for col in columns:
         header_parts.append(f" {str(col).ljust(col_widths[col])} ")
-    print('|' + '|'.join(header_parts) + '|')
+    print("|" + "|".join(header_parts) + "|")
 
     # Print separator
-    print('+' + '+'.join('-' * (col_widths[col] + 2) for col in columns) + '+')
+    print("+" + "+".join("-" * (col_widths[col] + 2) for col in columns) + "+")
 
     # Print data rows
     for doc in results:
@@ -627,10 +750,10 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
             else:
                 # Left-align text columns
                 row_parts.append(f" {value.ljust(col_widths[col])} ")
-        print('|' + '|'.join(row_parts) + '|')
+        print("|" + "|".join(row_parts) + "|")
 
     # Print bottom border
-    print('+' + '+'.join('-' * (col_widths[col] + 2) for col in columns) + '+')
+    print("+" + "+".join("-" * (col_widths[col] + 2) for col in columns) + "+")
 
     # Print row count (but not for SHOW operations, execute mode, or silent mode)
     if not is_show_operation and not is_execute_mode and not silent:
@@ -641,7 +764,10 @@ def display_mysql_table(results, is_show_operation=False, execution_time=0.0, is
             print(f"{row_count} rows in set ({execution_time:.2f} sec)")
         print()
 
-def display_mysql_vertical(results, execution_time=0.0, is_execute_mode=False, silent=False):
+
+def display_mysql_vertical(
+    results, execution_time=0.0, is_execute_mode=False, silent=False
+):
     """Display results in MySQL/MariaDB vertical format (like \\G)"""
     if not results:
         return
@@ -656,7 +782,7 @@ def display_mysql_vertical(results, execution_time=0.0, is_execute_mode=False, s
         for col in columns:
             value = doc.get(col)
             if value is None:
-                display_value = 'NULL'
+                display_value = "NULL"
             else:
                 display_value = str(value)
             print(f"{str(col).rjust(max_col_width)}: {display_value}")
@@ -670,5 +796,6 @@ def display_mysql_vertical(results, execution_time=0.0, is_execute_mode=False, s
             print(f"{row_count} rows in set ({execution_time:.2f} sec)")
         print()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()
