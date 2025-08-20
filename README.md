@@ -26,9 +26,10 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 
 ## Compatibility Status
 
-**🎉 PERFECT COMPATIBILITY ACHIEVED - 100% Success Rate Across All Test Suites! 🎉**
+### Perfect Compatibility Achieved - 100% Success Rate Across All Test Suites
 
 ### Phase 1: Core SQL Features ✅ COMPLETE (69/69 tests - 100% success)
+
 - ✅ **DATETIME functions**: 22/22 (100.0%) - Complete date/time function support
 - ✅ **STRING functions**: 10/10 (100.0%) - Full string manipulation support  
 - ✅ **MATH functions**: 10/10 (100.0%) - Complete mathematical operations
@@ -41,18 +42,25 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 - ✅ **SUBQUERIES**: 5/5 (100.0%) - Complete subquery support with all patterns
 
 ### Phase 2: Modern Application Extensions ✅ COMPLETE (36/36 tests - 100% success)
+
 - ✅ **JSON functions**: 10/10 (100.0%) - Complete JSON document manipulation
 - ✅ **EXTENDED_STRING functions**: 16/16 (100.0%) - REGEXP, CONCAT_WS, FORMAT, SOUNDEX, HEX operations
 - ✅ **ENHANCED_AGGREGATE functions**: 10/10 (100.0%) - GROUP_CONCAT, statistical functions, bitwise operations
 
-**Total Implementation Status: 105/105 tests (100% success rate)**
+### Total Implementation Status
+
+### Implementation Status Summary
+
+105/105 tests (100% success rate)
 
 ## Recent Updates
 
 ### Version 2.0.0 (August 19, 2025)
-**🎉 PHASE 2 COMPLETION - 100% Modern Application Extension Support!**
 
-#### ✅ Major Achievements:
+Phase 2 completion - 100% modern application extension support
+
+#### Major Achievements
+
 - **JSON Functions Module**: Complete implementation of 10 JSON manipulation functions
   - JSON_EXTRACT, JSON_OBJECT, JSON_ARRAY, JSON_UNQUOTE, JSON_KEYS, JSON_LENGTH
   - Full table-based JSON operations with MongoDB native operators
@@ -69,23 +77,27 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
   - VARIANCE (VAR_POP/VAR_SAMP) using multi-stage MongoDB aggregation
   - BIT_AND/BIT_OR/BIT_XOR bitwise aggregate operations
 
-#### 🔧 Technical Achievements:
+#### Phase 2 Technical Achievements
+
 - **Multi-stage aggregation pipelines** for complex statistical calculations
 - **MongoDB Atlas compatibility** ensuring cloud deployment readiness
 - **Precision control systems** matching MariaDB's 6-decimal statistical formatting
 - **Function integration architecture** enabling seamless Phase 1 + Phase 2 operation
 - **Comprehensive test coverage** with 36 additional test cases
 
-#### 📊 Test Results:
+#### Phase 2 Test Results
+
 - **Phase 1**: Maintained 69/69 tests (100% success rate)
 - **Phase 2**: Achieved 36/36 tests (100% success rate)
 - **Total**: 105/105 tests passing (100% overall compatibility)
 - **Function Count**: 110+ MariaDB functions fully implemented
 
 ### Version 1.3.0 (August 15, 2025)
-**🎉 COMPLETE SUBQUERY SUPPORT - Perfect 100% Compatibility Achieved!**
 
-#### ✅ Completed Features:
+Complete subquery support - perfect 100% compatibility achieved
+
+#### Completed Features
+
 - **SCALAR Subqueries**: Single value returns with proper aggregation pipeline integration
 - **IN/EXISTS Subqueries**: Table-based and correlated subquery support with `$lookup` operations
 - **ROW Subqueries**: Multi-column tuple matching with `$and` conditions
@@ -93,36 +105,42 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 - **Database Connection**: Fixed CLI database switching for seamless query execution
 - **Field Resolution**: Enhanced alias-aware projection mapping for clean output formatting
 
-#### 🔧 Technical Achievements:
+#### Subquery Technical Achievements
+
 - Complete token-based subquery parsing with context-aware type detection
 - MongoDB aggregation pipeline generation for all subquery patterns
 - Sophisticated field reference resolution for derived table operations
 - Clean output formatting with proper alias handling
 - Integration with existing JOIN, GROUP BY, and ORDER BY systems
 
-#### 📊 Test Results:
+#### Subquery Test Results
+
 - **Before**: 64/67 tests passing (95.5% success rate)
 - **After**: 69/69 tests passing (100% success rate)
 - **Achievement**: Perfect compatibility across all SQL operation categories
 - **Subqueries**: All 5 subquery patterns fully implemented and tested
 
 ### Version 1.2.0 (August 15, 2025)
-**🎉 Major Conditional Functions Update - Compatibility increased to 95.5%**
 
-#### ✅ Completed Features:
+Major conditional functions update - compatibility increased to 95.5%
+
+#### Version 1.2 Completed Features
+
 - **COALESCE Function**: Fixed evaluation engine to properly handle `$ifNull` operators
 - **NULLIF Function**: Complete implementation with proper empty string formatting  
 - **Expression Evaluation**: Enhanced MongoDB client with `$eq` and `$ifNull` operator support
 - **Result Formatting**: Improved null value handling to match MariaDB behavior
 - **QA Parser**: Fixed table output parsing to handle empty cell values correctly
 
-#### 🔧 Technical Improvements:
+#### Version 1.2 Technical Improvements
+
 - Enhanced `mongodb_client.py` with comprehensive expression evaluation
 - Updated argument parsing in `translator.py` for conditional function compatibility
 - Fixed result formatting pipeline from evaluation through display
 - Improved QA test parser robustness for edge cases
 
-#### 📊 Test Results:
+#### Version 1.2 Test Results
+
 - **Before**: 62/67 tests passing (92.5% success rate)
 - **After**: 64/67 tests passing (95.5% success rate)
 - **Fixed**: COALESCE and NULLIF functions now working correctly
@@ -131,22 +149,26 @@ A command-line client that translates MariaDB/MySQL syntax to MongoDB Query Lang
 ## Installation
 
 1. Clone the repository:
+
 ```bash
 git clone <repository-url>
 cd MongoSQL
 ```
 
-2. Install dependencies:
+1. Install dependencies:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Make the mongosql script executable:
+1. Make the mongosql script executable:
+
 ```bash
 chmod +x mongosql
 ```
 
-4. Configure MongoDB connection:
+1. Configure MongoDB connection:
+
 ```bash
 cp .env.example .env
 # Edit .env with your MongoDB connection details
@@ -158,6 +180,7 @@ cp .env.example .env
 
 - **MariaDB**: Uses `utf8mb4_unicode_ci` (case-insensitive, Unicode-aware)
 - **MongoDB**: Configured with equivalent collation settings:
+
   ```javascript
   {
     locale: 'en',
@@ -198,6 +221,7 @@ cat queries.sql | ./mongosql classicmodels --batch
 ## Advanced Features
 
 ### GROUP BY with Aggregation
+
 ```sql
 -- GROUP BY with COUNT and HAVING
 SELECT country, COUNT(*) as customer_count 
@@ -213,6 +237,7 @@ GROUP BY country;
 ```
 
 ### Conditional Functions
+
 ```sql
 -- IF function
 SELECT IF(creditLimit > 50000, 'High', 'Low') as credit_tier FROM customers;
@@ -232,6 +257,7 @@ SELECT NULLIF(customerName, 'Unknown Customer') as name FROM customers;
 ```
 
 ### JOIN Support
+
 ```sql
 -- INNER JOIN
 SELECT c.customerName, o.orderDate 
@@ -246,6 +272,7 @@ LEFT JOIN orderdetails od ON o.orderNumber = od.orderNumber;
 ```
 
 ### ORDER BY with Collation
+
 ```sql
 -- Case-insensitive sorting matching MariaDB behavior
 SELECT customerName FROM customers ORDER BY customerName ASC LIMIT 10;
@@ -253,6 +280,7 @@ SELECT customerName FROM customers ORDER BY customerName ASC LIMIT 10;
 ```
 
 ### DISTINCT Operations
+
 ```sql
 -- Single and multi-column DISTINCT
 SELECT DISTINCT country FROM customers;
@@ -260,6 +288,7 @@ SELECT DISTINCT city, country FROM customers;
 ```
 
 ### Subqueries (In Development)
+
 ```sql
 -- Scalar subquery for single value comparison
 SELECT customerName FROM customers 
@@ -344,8 +373,9 @@ The translator supports **110+ MariaDB/MySQL functions** with comprehensive mapp
 ### Phase 1: Core SQL Functions (47 functions)
 
 #### String Functions (10/10 - 100% supported)
+
 - `CONCAT()` → `$concat`
-- `SUBSTRING()` → `$substr` 
+- `SUBSTRING()` → `$substr`
 - `LENGTH()` → `$strLenCP`
 - `UPPER()`, `LOWER()` → `$toUpper`, `$toLower`
 - `TRIM()`, `LTRIM()`, `RTRIM()` → `$trim`, `$ltrim`, `$rtrim`
@@ -354,6 +384,7 @@ The translator supports **110+ MariaDB/MySQL functions** with comprehensive mapp
 - `REVERSE()` → Custom implementation
 
 #### Mathematical Functions (10/10 - 100% supported)
+
 - `ABS()` → `$abs`
 - `CEIL()`, `FLOOR()` → `$ceil`, `$floor`
 - `ROUND()` → `$round`
@@ -363,6 +394,7 @@ The translator supports **110+ MariaDB/MySQL functions** with comprehensive mapp
 - `GREATEST()` → `$max`
 
 #### Date/Time Functions (22/22 - 100% supported)
+
 - `NOW()`, `CURDATE()`, `CURTIME()` → `$$NOW` and variants
 - `YEAR()`, `MONTH()`, `DAY()` → `$year`, `$month`, `$dayOfMonth`
 - `HOUR()`, `MINUTE()`, `SECOND()` → `$hour`, `$minute`, `$second`
@@ -372,12 +404,14 @@ The translator supports **110+ MariaDB/MySQL functions** with comprehensive mapp
 - `EXTRACT()`, `TO_DAYS()` → Temporal extractions
 
 #### Aggregate Functions (5/5 - 100% supported)
+
 - `COUNT()` → `$sum: 1`
 - `SUM()`, `AVG()`, `MIN()`, `MAX()` → `$sum`, `$avg`, `$min`, `$max`
 
 ### Phase 2: Modern Application Extensions (63+ functions)
 
 #### JSON Functions (10/10 - 100% supported)
+
 - `JSON_EXTRACT()` → `$getField` and `$arrayElemAt`
 - `JSON_OBJECT()` → `$literal` object construction
 - `JSON_ARRAY()` → `$literal` array construction
@@ -386,6 +420,7 @@ The translator supports **110+ MariaDB/MySQL functions** with comprehensive mapp
 - `JSON_LENGTH()` → `$size` for arrays/objects
 
 #### Extended String Functions (16/16 - 100% supported)
+
 - `CONCAT_WS()` → `$concat` with separator handling
 - `REGEXP()`, `RLIKE()` → `$regexMatch` pattern matching
 - `REGEXP_SUBSTR()` → `$regexFind` substring extraction
@@ -394,47 +429,21 @@ The translator supports **110+ MariaDB/MySQL functions** with comprehensive mapp
 - `HEX()`, `UNHEX()` → Hexadecimal encoding/decoding
 
 #### Enhanced Aggregate Functions (10/10 - 100% supported)
+
 - `GROUP_CONCAT()` → `$arrayToString` with separator support
 - `STDDEV_POP()`, `STDDEV_SAMP()` → `$stdDevPop`, `$stdDevSamp`
 - `VAR_POP()`, `VAR_SAMP()` → Multi-stage variance calculation
 - `BIT_AND()`, `BIT_OR()`, `BIT_XOR()` → Bitwise aggregate operations
 
 #### Conditional Functions (4/4 - 100% supported)
+
 - `IF()` → `$cond` conditional operator
 - `CASE WHEN` → `$switch` multi-branch conditions
 - `COALESCE()` → Nested `$ifNull` null handling
 - `NULLIF()` → `$cond` with equality comparison
-- `SUBSTRING()` → `$substr` 
-- `LENGTH()` → `$strLenCP`
-- `UPPER()`, `LOWER()` → `$toUpper`, `$toLower`
-- `TRIM()`, `LTRIM()`, `RTRIM()` → `$trim`, `$ltrim`, `$rtrim`
-- `REPLACE()` → `$replaceAll`
-- `LEFT()`, `RIGHT()` → `$substr` variations
-- `REVERSE()` → Custom implementation
-
-### Mathematical Functions (10/10 - 100% supported)
-- `ABS()` → `$abs`
-- `CEIL()`, `FLOOR()` → `$ceil`, `$floor`
-- `ROUND()` → `$round`
-- `POWER()`, `SQRT()` → `$pow`, `$sqrt`
-- `SIN()`, `COS()` → `$sin`, `$cos`
-- `LOG()` → `$ln`
-- `GREATEST()` → `$max`
-
-### Date/Time Functions (22/22 - 100% supported)
-- `NOW()`, `CURDATE()`, `CURTIME()` → `$$NOW` and variants
-- `YEAR()`, `MONTH()`, `DAY()` → `$year`, `$month`, `$dayOfMonth`
-- `HOUR()`, `MINUTE()`, `SECOND()` → `$hour`, `$minute`, `$second`
-- `DATE_FORMAT()` → `$dateToString`
-- `MAKEDATE()`, `MAKETIME()` → Custom implementations
-- `TIMESTAMPADD()`, `ADDTIME()`, `SUBTIME()` → Date arithmetic
-- `EXTRACT()`, `TO_DAYS()` → Temporal extractions
-
-### Aggregate Functions (5/5 - 100% supported)
-- `COUNT()` → `$sum: 1`
-- `SUM()`, `AVG()`, `MIN()`, `MAX()` → `$sum`, `$avg`, `$min`, `$max`
 
 ### Advanced Operations (100% supported)
+
 - **JOINs**: INNER, LEFT, RIGHT, multi-table joins
 - **ORDER BY**: Single and multi-field sorting with proper collation
 - **DISTINCT**: Single and multi-column distinct operations
@@ -492,7 +501,7 @@ MARIADB_DATABASE=classicmodels
 
 ## Project Structure
 
-```
+```text
 src/
 ├── cli/
 │   └── main.py              # CLI interface and main entry point
@@ -560,21 +569,27 @@ KB/
 ### Core Modules
 
 #### JOIN Module (`src/joins/`)
+
 Comprehensive JOIN support with MongoDB aggregation pipeline translation:
+
 - **Supported Types**: INNER, LEFT, RIGHT, CROSS JOIN
 - **Features**: Multi-table joins, complex ON conditions, table aliases
 - **MongoDB Translation**: Uses `$lookup` and `$unwind` operations
 - **Optimization**: Query optimization for MongoDB execution model
 
 #### GROUP BY Module (`src/groupby/`)
+
 Complete GROUP BY functionality with aggregation support:
+
 - **Features**: Single/multiple field grouping, aggregate functions, HAVING clauses
 - **Supported Aggregates**: COUNT, SUM, AVG, MIN, MAX
 - **MongoDB Translation**: Uses `$group` aggregation pipeline stage
 - **Integration**: Works seamlessly with ORDER BY and LIMIT
 
 #### Conditional Module (`src/conditional/`)
+
 SQL conditional functions translated to MongoDB operators:
+
 - **IF Function**: `$cond` operator for conditional logic ✅
 - **CASE WHEN**: `$switch` operator for multi-branch conditions ✅  
 - **COALESCE**: Nested `$ifNull` operators for null handling ✅
@@ -583,7 +598,9 @@ SQL conditional functions translated to MongoDB operators:
 - **Edge Case Handling**: Proper null value formatting and display
 
 #### Subqueries Module (`src/subqueries/`)
+
 Advanced subquery support for nested SELECT statements:
+
 - **Scalar Subqueries**: Single value comparisons in WHERE clauses
 - **IN Subqueries**: Value existence checking with subquery result sets  
 - **EXISTS Subqueries**: Correlated subqueries for row existence testing
@@ -592,14 +609,18 @@ Advanced subquery support for nested SELECT statements:
 - **Integration**: Seamless integration with WHERE, JOIN, and other modules
 
 #### Reserved Words Module (`src/reserved_words/`)
+
 MariaDB compatibility with proper identifier handling:
+
 - **Comprehensive Lists**: All MariaDB reserved words and keywords
 - **Oracle Mode**: Additional words for Oracle compatibility mode
 - **Smart Escaping**: Automatic backtick escaping when needed
 - **Context Aware**: Different handling for different SQL contexts
 
 #### WHERE Module (`src/where/`)
+
 Complex WHERE clause parsing and translation:
+
 - **Operators**: All comparison operators, LIKE patterns, IN clauses
 - **Logical Operations**: AND, OR, NOT with proper precedence
 - **MongoDB Translation**: Converts to MongoDB match filters
@@ -608,20 +629,26 @@ Complex WHERE clause parsing and translation:
 ### Supporting Modules
 
 #### Functions Module (`src/functions/`)
+
 47+ MariaDB/MySQL functions with MongoDB equivalents:
+
 - **String Functions**: CONCAT, SUBSTRING, LENGTH, TRIM, etc.
 - **Math Functions**: ABS, ROUND, POWER, SQRT, trigonometric functions
 - **DateTime Functions**: NOW, DATE_FORMAT, YEAR, MONTH, etc.
 - **Aggregate Functions**: COUNT, SUM, AVG, MIN, MAX
 
 #### Parsers (`src/parsers/`)
+
 Token-based SQL parsing using sqlparse library:
+
 - **Robust Parsing**: Handles complex SQL syntax correctly
 - **Token-Based**: No regex usage, reliable edge case handling
 - **Modular**: Delegates to specialized parsers for different clauses
 
 #### Database (`src/database/`)
+
 MongoDB connection and query execution:
+
 - **Connection Pooling**: Efficient MongoDB connection management
 - **Collation Support**: Matches MariaDB utf8mb4_unicode_ci behavior
 - **Error Handling**: Comprehensive error messages and recovery
@@ -629,7 +656,9 @@ MongoDB connection and query execution:
 ## Testing Framework
 
 ### Quality Assurance (`QA/`)
+
 Comprehensive testing framework achieving **perfect 100% compatibility** across all development phases:
+
 - **105 Test Cases** across 13 functional categories organized in development phases
 - **Phase 1 Complete**: 69 tests for core SQL features (100% pass rate)
 - **Phase 2 Complete**: 36 tests for modern application extensions (100% pass rate)
@@ -638,7 +667,8 @@ Comprehensive testing framework achieving **perfect 100% compatibility** across 
 - **Statistical Precision**: 6-decimal precision matching for mathematical functions
 - **Automated Reporting**: Detailed success/failure analysis with categorized results
 
-#### QA Testing Usage:
+#### QA Testing Usage
+
 ```bash
 # Test all categories (100% success rate)
 python QA/mariadb_comparison_qa.py
@@ -660,7 +690,8 @@ python QA/mariadb_comparison_qa.py --function VAR_POP --verbose
 python QA/mariadb_comparison_qa.py --phase 1 --verbose
 ```
 
-#### Test Categories:
+#### Test Categories
+
 - **datetime**: 22 tests - Date/time function compatibility
 - **string**: 10 tests - Core string manipulation functions  
 - **math**: 10 tests - Mathematical operations and calculations
@@ -675,7 +706,8 @@ python QA/mariadb_comparison_qa.py --phase 1 --verbose
 - **extended_string**: 16 tests - Advanced string functions (REGEXP, CONCAT_WS, FORMAT)
 - **enhanced_aggregate**: 10 tests - Statistical and bitwise aggregate functions
 
-#### QA Testing Usage:
+#### Testing Commands
+
 ```bash
 # Test all categories
 python QA/mariadb_comparison_qa.py
@@ -698,6 +730,7 @@ python QA/mariadb_comparison_qa.py --phase 1 --verbose
 ## Error Handling
 
 The translator provides helpful error messages for:
+
 - Connection issues
 - Invalid SQL syntax
 - Unsupported operations
@@ -708,6 +741,7 @@ The translator provides helpful error messages for:
 ### ✅ COMPLETED PHASES
 
 #### Phase 1: Core SQL Features ✅ COMPLETE (100% compatibility)
+
 - ✅ All basic SQL operations (SELECT, INSERT, UPDATE, DELETE)
 - ✅ Comprehensive function library (47 core functions)
 - ✅ Complete JOIN support (INNER, LEFT, RIGHT, multi-table)
@@ -720,6 +754,7 @@ The translator provides helpful error messages for:
 - ✅ Complete subquery support (SCALAR, IN/EXISTS, ROW, DERIVED)
 
 #### Phase 2: Modern Application Extensions ✅ COMPLETE (100% compatibility)
+
 - ✅ **JSON Functions** - Complete JSON document manipulation (10 functions)
 - ✅ **Extended String Functions** - REGEXP, CONCAT_WS, FORMAT, SOUNDEX, HEX (16 functions)
 - ✅ **Enhanced Aggregate Functions** - GROUP_CONCAT, statistical, bitwise operations (10 functions)
@@ -727,7 +762,9 @@ The translator provides helpful error messages for:
 ### 🚀 FUTURE ROADMAP
 
 #### Phase 3: Enterprise Extensions 📋 PLANNED
+
 **Target**: Enterprise-grade database features for large-scale applications
+
 - **Window Functions** - Advanced analytical functions (ROW_NUMBER, RANK, LAG, LEAD)
 - **Common Table Expressions (CTEs)** - Recursive queries and complex hierarchical data
 - **Full-Text Search** - Advanced text search capabilities with scoring and relevance
@@ -736,7 +773,9 @@ The translator provides helpful error messages for:
 - **Performance Analytics** - Query optimization and execution analysis
 
 #### Phase 4: Advanced Database Operations 📋 PLANNED
+
 **Target**: Complete database administration and advanced operations
+
 - **Stored Procedures** - Complex procedural logic translation
 - **Triggers and Events** - Database automation and reactive operations
 - **Advanced Indexing** - MongoDB index optimization for SQL patterns
@@ -744,18 +783,21 @@ The translator provides helpful error messages for:
 - **Advanced Security** - Role-based access control and data masking
 
 ### Current Achievement Summary
+
 - **Total Functions Implemented**: 110+ across all major categories
 - **Test Coverage**: 105/105 tests (100% success rate)
 - **SQL Compatibility**: Complete MariaDB/MySQL compatibility for all core operations
 - **Production Ready**: Full enterprise deployment capabilities with comprehensive error handling
 
 ### MongoDB-Specific Considerations
+
 - **Document-based nature**: Complex JOINs are converted to aggregation pipelines
 - **Collation importance**: Proper collation configuration required for sorting compatibility
 - **Schema flexibility**: MongoDB's schemaless nature handled gracefully
 - **Performance optimization**: Queries optimized for MongoDB's execution model
 
 ### Known Differences
+
 - **Collation**: Requires explicit configuration for MariaDB compatibility
 - **NULL handling**: MongoDB's null semantics may differ slightly from SQL
 - **Data types**: Automatic type conversion between SQL and BSON types
