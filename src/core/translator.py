@@ -2373,7 +2373,13 @@ class MongoSQLTranslator:
 
     def _has_window_functions(self, parsed_sql: Dict[str, Any]) -> bool:
         """Check if query contains window functions with OVER clauses"""
-        # Check for 'OVER' keyword in the original SQL
+        # Check columns for window function markers
+        columns = parsed_sql.get("columns", [])
+        for col in columns:
+            if isinstance(col, dict) and col.get("is_window_function", False):
+                return True
+
+        # Fallback: Check for 'OVER' keyword in the original SQL
         original_sql = parsed_sql.get("original_sql", "")
         if "OVER" in original_sql.upper():
             return self.window_translator.is_window_query(original_sql)

@@ -99,6 +99,7 @@ class TokenBasedSQLParser:
             "joins": [],
             "distinct": False,
             "subqueries": [],
+            "original_sql": str(parsed),
         }
 
         tokens = list(parsed.flatten())
@@ -304,19 +305,58 @@ class TokenBasedSQLParser:
         # Extract arguments between the parentheses
         args_str = column_str[start_paren + 1 : end_paren].strip()
 
-        # Check for alias after the function
+        # Check for window function (OVER clause) after the function
         remaining = column_str[end_paren + 1 :].strip()
+        window_spec = None
         alias = None
-        if remaining.upper().startswith("AS "):
-            alias = remaining[3:].strip()
-        elif " " in remaining and not remaining.upper().startswith("FROM"):
-            alias = remaining.strip()
+
+        if remaining.upper().startswith("OVER"):
+            # This is a window function - parse the OVER clause
+            over_start = remaining.upper().find("OVER")
+            over_part = remaining[over_start:]
+
+            # Find the OVER clause parentheses
+            if "(" in over_part and ")" in over_part:
+                paren_start = over_part.find("(")
+                paren_count = 0
+                paren_end = -1
+
+                for i in range(paren_start, len(over_part)):
+                    if over_part[i] == "(":
+                        paren_count += 1
+                    elif over_part[i] == ")":
+                        paren_count -= 1
+                        if paren_count == 0:
+                            paren_end = i
+                            break
+
+                if paren_end != -1:
+                    # Extract window specification
+                    window_spec = over_part[paren_start + 1 : paren_end].strip()
+
+                    # Check for alias after the OVER clause
+                    after_over = over_part[paren_end + 1 :].strip()
+                    if after_over.upper().startswith("AS "):
+                        alias = after_over[3:].strip()
+                    elif after_over and not after_over.upper().startswith("FROM"):
+                        alias = after_over.strip()
+        else:
+            # Regular function - check for alias
+            if remaining.upper().startswith("AS "):
+                alias = remaining[3:].strip()
+            elif " " in remaining and not remaining.upper().startswith("FROM"):
+                alias = remaining.strip()
 
         column_info = {
             "function": func_name,
             "args_str": args_str,
             "original_call": column_str,
         }
+
+        if window_spec is not None:
+            column_info["window_spec"] = window_spec
+            column_info["is_window_function"] = True
+
         if alias:
             column_info["alias"] = alias
 
