@@ -18,6 +18,7 @@ from ..modules.enhanced_aggregate.enhanced_aggregate_function_mapper import (
     EnhancedAggregateFunctionMapper,
 )
 from ..modules.encryption.encryption_function_mapper import EncryptionFunctionMapper
+from ..modules.window.window_function_mapper import WindowFunctionMapper
 
 
 class FunctionMapper:
@@ -48,6 +49,7 @@ class FunctionMapper:
         self.regexp_mapper = RegexpFunctionMapper()
         self.enhanced_aggregate_mapper = EnhancedAggregateFunctionMapper()
         self.encryption_mapper = EncryptionFunctionMapper()
+        self.window_mapper = WindowFunctionMapper()
 
         # Cache for function categorization
         self._function_categories = self._build_function_categories()
@@ -95,6 +97,10 @@ class FunctionMapper:
         # Encryption functions
         for func in ["MD5", "SHA1", "SHA2", "AES_ENCRYPT", "AES_DECRYPT"]:
             categories[func.upper()] = "encryption"
+
+        # Window functions
+        for func in self.window_mapper.get_supported_functions():
+            categories[func.upper()] = "window"
 
         return categories
 
@@ -152,6 +158,9 @@ class FunctionMapper:
             elif category == "encryption":
                 return self.encryption_mapper.map_function(function_name, args)
 
+            elif category == "window":
+                return self.window_mapper.get_function_mapping(function_name, args)
+
             else:
                 raise ValueError(f"Unknown function category: {category}")
 
@@ -197,6 +206,10 @@ class FunctionMapper:
     def is_extended_string_function(self, function_name: str) -> bool:
         """Check if function is an extended string function"""
         return self.extended_string_mapper.is_extended_string_function(function_name)
+
+    def is_window_function(self, function_name: str) -> bool:
+        """Check if function is a window function"""
+        return self.window_mapper.is_window_function(function_name)
 
     def is_encryption_function(self, function_name: str) -> bool:
         """Check if function is an encryption function"""
