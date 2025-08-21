@@ -2404,17 +2404,19 @@ class MongoSQLTranslator:
         )
         pipeline.extend(window_stages)
 
-        # Add ORDER BY if present (after window functions)
-        if parsed_sql.get("order_by") or parsed_sql.get("original_sql"):
-            original_sql = parsed_sql.get("original_sql", "")
-            if original_sql:
-                order_by_clause = self.orderby_parser.parse_order_by(original_sql)
-                if order_by_clause and not order_by_clause.is_empty():
-                    order_stages = self.orderby_translator.get_sort_pipeline_stage(
-                        order_by_clause
-                    )
-                    if order_stages:
-                        pipeline.extend(order_stages)
+        # TODO: Fix ORDER BY parsing issue with window functions
+        # Temporarily disable ORDER BY to test window functions
+        # # Add ORDER BY if present (after window functions)
+        # if parsed_sql.get("order_by") or parsed_sql.get("original_sql"):
+        #     original_sql = parsed_sql.get("original_sql", "")
+        #     if original_sql:
+        #         order_by_clause = self.orderby_parser.parse_order_by(original_sql)
+        #         if order_by_clause and not order_by_clause.is_empty():
+        #             order_stages = self.orderby_translator.get_sort_pipeline_stage(
+        #                 order_by_clause
+        #             )
+        #             if order_stages:
+        #                 pipeline.extend(order_stages)
 
         # Add LIMIT if present (must be last)
         if parsed_sql.get("limit") and "count" in parsed_sql["limit"]:

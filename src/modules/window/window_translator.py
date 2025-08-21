@@ -83,7 +83,7 @@ class WindowTranslator:
 
         # Handle different window function types
         if function_name == "ROW_NUMBER":
-            stage["$setWindowFields"]["output"][output_field] = {"$rowNumber": {}}
+            stage["$setWindowFields"]["output"][output_field] = {"$documentNumber": {}}
         elif function_name == "RANK":
             stage["$setWindowFields"]["output"][output_field] = {"$rank": {}}
         elif function_name == "DENSE_RANK":
