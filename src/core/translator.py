@@ -190,7 +190,7 @@ class MongoSQLTranslator:
                         # Non-aggregate function with FROM clause - use aggregation pipeline
                         return self._handle_function_with_from(parsed_sql)
                 else:
-                    # Handle qualified column names (e.g., "c.customerName")
+                    # Handle qualified column names (e.g., "c.customerName") and aliases
                     col_name = col
                     if isinstance(col, str) and "." in col:
                         # Extract just the column name from table.column format
@@ -203,8 +203,24 @@ class MongoSQLTranslator:
                     if isinstance(
                         col_name, str
                     ):  # Ensure it's a string before using as dict key
-                        projection[col_name] = 1
-                        query_columns.append(col_name)
+                        # Check if this column has an alias (e.g., "customerName as cname")
+                        if " as " in col_name.lower():
+                            col_lower = col_name.lower()
+                            as_pos = col_lower.rfind(" as ")
+                            if as_pos != -1:
+                                original_col = col_name[:as_pos].strip()
+                                alias_name = col_name[
+                                    as_pos + 4 :
+                                ].strip()  # +4 for " as "
+                                # For find() operation, we need to use aggregation pipeline for aliases
+                                # This should redirect to aggregation pipeline instead
+                                return self._handle_mixed_columns_with_from(parsed_sql)
+                            else:
+                                projection[col_name] = 1
+                                query_columns.append(col_name)
+                        else:
+                            projection[col_name] = 1
+                            query_columns.append(col_name)
                         if col_name == "_id":
                             has_id_column = True
 
@@ -1699,7 +1715,18 @@ class MongoSQLTranslator:
             else:
                 # Simple column name
                 if isinstance(col, str):
-                    projection_stage[col] = f"${col}"
+                    # Check if this column has an alias (e.g., "customerName as cname")
+                    if " as " in col.lower():
+                        col_lower = col.lower()
+                        as_pos = col_lower.rfind(" as ")
+                        if as_pos != -1:
+                            original_col = col[:as_pos].strip()
+                            alias_name = col[as_pos + 4 :].strip()  # +4 for " as "
+                            projection_stage[alias_name] = f"${original_col}"
+                        else:
+                            projection_stage[col] = f"${col}"
+                    else:
+                        projection_stage[col] = f"${col}"
 
         # Add the projection stage
         if projection_stage:
@@ -1868,7 +1895,18 @@ class MongoSQLTranslator:
             else:
                 # Simple column name
                 if isinstance(col, str):
-                    projection_stage[col] = f"${col}"
+                    # Check if this column has an alias (e.g., "customerName as cname")
+                    if " as " in col.lower():
+                        col_lower = col.lower()
+                        as_pos = col_lower.rfind(" as ")
+                        if as_pos != -1:
+                            original_col = col[:as_pos].strip()
+                            alias_name = col[as_pos + 4 :].strip()  # +4 for " as "
+                            projection_stage[alias_name] = f"${original_col}"
+                        else:
+                            projection_stage[col] = f"${col}"
+                    else:
+                        projection_stage[col] = f"${col}"
 
         # Add the projection stage
         if projection_stage:
@@ -2169,7 +2207,18 @@ class MongoSQLTranslator:
                         projection_stage[field] = f"${col}"
                 else:
                     # Normal column mapping
-                    projection_stage[col] = f"${col}"
+                    # Check if this column has an alias (e.g., "customerName as cname")
+                    if " as " in col.lower():
+                        col_lower = col.lower()
+                        as_pos = col_lower.rfind(" as ")
+                        if as_pos != -1:
+                            original_col = col[:as_pos].strip()
+                            alias_name = col[as_pos + 4 :].strip()  # +4 for " as "
+                            projection_stage[alias_name] = f"${original_col}"
+                        else:
+                            projection_stage[col] = f"${col}"
+                    else:
+                        projection_stage[col] = f"${col}"
             elif isinstance(col, dict) and "column" in col:
                 col_name = col["column"]
                 projection_stage[col_name] = f"${col_name}"

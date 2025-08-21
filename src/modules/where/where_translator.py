@@ -126,19 +126,22 @@ class WhereTranslator:
 
     def _like_to_mongodb_regex(self, field: str, like_pattern: str) -> Dict[str, Any]:
         """Convert SQL LIKE to MongoDB regex using simple pattern conversion"""
-        if like_pattern.startswith('%') and like_pattern.endswith('%'):
+        if like_pattern.startswith("%") and like_pattern.endswith("%"):
             # %text% - contains (anywhere)
             text = like_pattern[1:-1]
             return {field: {"$regex": text, "$options": "i"}}
-        elif like_pattern.startswith('%'):
+        elif like_pattern.startswith("%"):
             # %text - ends with
             text = like_pattern[1:]
             return {field: {"$regex": f"{text}$", "$options": "i"}}
-        elif like_pattern.endswith('%'):
+        elif like_pattern.endswith("%"):
             # text% - starts with (your example: 'A%' becomes '^A')
             text = like_pattern[:-1]
             return {field: {"$regex": f"^{text}", "$options": "i"}}
-    def _handle_like_operation(self, left_operand: str, right_operand: str) -> Dict[str, Any]:
+
+    def _handle_like_operation(
+        self, left_operand: str, right_operand: str
+    ) -> Dict[str, Any]:
         """Handle LIKE operation with MongoDB regex"""
         field = left_operand
         pattern = right_operand.strip("'\"")
