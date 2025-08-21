@@ -2400,7 +2400,7 @@ class MongoSQLTranslator:
 
         # Add window function stages
         window_stages = self.window_translator.translate_window_query(
-            original_sql, collection
+            original_sql, collection, parsed_sql.get("columns", [])
         )
         pipeline.extend(window_stages)
 
