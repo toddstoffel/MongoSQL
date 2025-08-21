@@ -13,6 +13,7 @@ from ..modules.orderby import OrderByParser, OrderByTranslator
 from ..modules.groupby import GroupByParser, GroupByTranslator
 from ..modules.subqueries import SubqueryTranslator
 from ..modules.subqueries.subquery_types import SubqueryType
+from ..modules.window.window_translator import WindowTranslator
 
 
 class MongoSQLTranslator:
@@ -26,6 +27,7 @@ class MongoSQLTranslator:
         self.groupby_parser = GroupByParser()
         self.groupby_translator = GroupByTranslator()
         self.subquery_translator = SubqueryTranslator()
+        self.window_translator = WindowTranslator()
 
     def _is_aggregate_function(self, function_name: str) -> bool:
         """Check if a function is an aggregate function using the function mapper"""
@@ -58,6 +60,10 @@ class MongoSQLTranslator:
         # Check if this query has JOINs
         if parsed_sql.get("joins"):
             return self.join_translator.translate_join_query(parsed_sql)
+
+        # Check for window functions - they require aggregation pipeline
+        if self._has_window_functions(parsed_sql):
+            return self._handle_window_functions(parsed_sql)
 
         # Handle DISTINCT queries
         if parsed_sql.get("distinct"):
@@ -2364,3 +2370,52 @@ class MongoSQLTranslator:
     def can_use_enhanced_translation(self, parsed_sql: Dict[str, Any]) -> bool:
         """Check if enhanced translation should be used"""
         return self.has_enhanced_expressions(parsed_sql)
+
+    def _has_window_functions(self, parsed_sql: Dict[str, Any]) -> bool:
+        """Check if query contains window functions with OVER clauses"""
+        # Check for 'OVER' keyword in the original SQL
+        original_sql = parsed_sql.get("original_sql", "")
+        if "OVER" in original_sql.upper():
+            return self.window_translator.is_window_query(original_sql)
+        return False
+
+    def _handle_window_functions(self, parsed_sql: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle queries with window functions using $setWindowFields"""
+        original_sql = parsed_sql.get("original_sql", "")
+        collection = parsed_sql.get("from")
+
+        # Build base pipeline
+        pipeline = []
+
+        # Add WHERE conditions if present
+        if parsed_sql.get("where"):
+            match_stage = {"$match": self._translate_where(parsed_sql["where"])}
+            pipeline.append(match_stage)
+
+        # Add window function stages
+        window_stages = self.window_translator.translate_window_query(
+            original_sql, collection
+        )
+        pipeline.extend(window_stages)
+
+        # Add ORDER BY if present (after window functions)
+        if parsed_sql.get("order_by") or parsed_sql.get("original_sql"):
+            original_sql = parsed_sql.get("original_sql", "")
+            if original_sql:
+                order_by_clause = self.orderby_parser.parse_order_by(original_sql)
+                if order_by_clause and not order_by_clause.is_empty():
+                    order_stages = self.orderby_translator.get_sort_pipeline_stage(
+                        order_by_clause
+                    )
+                    if order_stages:
+                        pipeline.extend(order_stages)
+
+        # Add LIMIT if present (must be last)
+        if parsed_sql.get("limit") and "count" in parsed_sql["limit"]:
+            pipeline.append({"$limit": parsed_sql["limit"]["count"]})
+
+        return {
+            "operation": "aggregate",
+            "collection": collection,
+            "pipeline": pipeline,
+        }
