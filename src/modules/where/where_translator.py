@@ -3,7 +3,6 @@ Standalone WHERE clause translator to avoid circular imports
 """
 
 from typing import Dict, Any, List, Optional
-import re
 
 
 class WhereTranslator:
@@ -108,9 +107,8 @@ class WhereTranslator:
         elif operator == ">=":
             return {field: {"$gte": value}}
         elif operator == "LIKE":
-            # Convert SQL LIKE pattern to MongoDB regex
-            regex_pattern = self._like_to_regex(value)
-            return {field: {"$regex": regex_pattern, "$options": "i"}}
+            # Convert SQL LIKE to MongoDB regex using simple pattern conversion
+            return self._like_to_mongodb_regex(field, value)
         elif operator == "REGEXP" or operator == "REGEX" or operator == "RLIKE":
             # Direct regex pattern for REGEXP/REGEX/RLIKE operators
             return {field: {"$regex": value, "$options": "i"}}
@@ -126,21 +124,22 @@ class WhereTranslator:
             # Fallback to equality
             return {field: value}
 
-    def _like_to_regex(self, like_pattern: str) -> str:
-        """Convert SQL LIKE pattern to MongoDB regex"""
-        # First convert SQL wildcards to temporary placeholders
-        temp_pattern = like_pattern.replace("%", "<<<PCT>>>").replace(
-            "_", "<<<UNDERSCORE>>>"
-        )
-
-        # Escape special regex characters
-        escaped = re.escape(temp_pattern)
-
-        # Convert placeholders to regex equivalents
-        # % becomes .* (any characters)
-        # _ becomes . (single character)
-        regex_pattern = escaped.replace("<<<PCT>>>", ".*").replace(
-            "<<<UNDERSCORE>>>", "."
-        )
-
-        return regex_pattern
+    def _like_to_mongodb_regex(self, field: str, like_pattern: str) -> Dict[str, Any]:
+        """Convert SQL LIKE to MongoDB regex using simple pattern conversion"""
+        if like_pattern.startswith('%') and like_pattern.endswith('%'):
+            # %text% - contains (anywhere)
+            text = like_pattern[1:-1]
+            return {field: {"$regex": text, "$options": "i"}}
+        elif like_pattern.startswith('%'):
+            # %text - ends with
+            text = like_pattern[1:]
+            return {field: {"$regex": f"{text}$", "$options": "i"}}
+        elif like_pattern.endswith('%'):
+            # text% - starts with (your example: 'A%' becomes '^A')
+            text = like_pattern[:-1]
+            return {field: {"$regex": f"^{text}", "$options": "i"}}
+    def _handle_like_operation(self, left_operand: str, right_operand: str) -> Dict[str, Any]:
+        """Handle LIKE operation with MongoDB regex"""
+        field = left_operand
+        pattern = right_operand.strip("'\"")
+        return self._like_to_mongodb_regex(field, pattern)

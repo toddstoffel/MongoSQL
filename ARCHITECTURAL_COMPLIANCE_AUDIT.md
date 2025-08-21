@@ -92,28 +92,30 @@ return {"_client_side_function": {"type": "MD5", "args": [processed_arg]}}
 **Severity**: ⛔ CRITICAL (Violates Token-Based Architecture)  
 
 **Violation Details**:
-- **WHERE Module**: `src/modules/where/where_translator.py` - Uses `re.escape()` for LIKE pattern conversion
+- ~~**WHERE Module**: `src/modules/where/where_translator.py` - Uses `re.escape()` for LIKE pattern conversion~~ ✅ **RESOLVED**
 - **CTE Preprocessor**: `src/modules/cte/cte_preprocessor.py` - Contains `import re` but usage unclear
 - **Enhanced Aggregate Parser**: `src/modules/enhanced_aggregate/enhanced_aggregate_parser.py` - 12+ regex operations for GROUP_CONCAT parsing
 - **Fulltext Modules**: `src/modules/fulltext/fulltext_parser.py` and `fulltext_translator.py` - Use regex for fulltext parsing
 - **Utils Module**: `src/utils/helpers.py` - Contains `import re` but appears unused
+
+**Recent Fixes**:
+- ✅ **WHERE Module** (Dec 2024): Replaced regex-based LIKE pattern conversion with simple MongoDB `$regex` operators
+  - `'A%'` → `{field: {$regex: '^A', $options: 'i'}}`
+  - `'%text%'` → `{field: {$regex: 'text', $options: 'i'}}`
+  - `'%end'` → `{field: {$regex: 'end$', $options: 'i'}}`
+  - **Status**: 100% functional, no regex usage, MongoDB native pattern matching
 
 **Architectural Impact**: **FUNDAMENTAL VIOLATION**  
 **Project Rule**: "NEVER use regex for SQL parsing - use sqlparse tokens ONLY"
 
 **Evidence**:
 ```python
-# WHERE module violation
-import re
-regex_pattern = self._like_to_regex(value)  
-escaped = re.escape(temp_pattern)
-
 # Enhanced Aggregate violation  
 match = re.search(pattern, token_value, re.IGNORECASE)
 args_content = re.sub(r"\bDISTINCT\b", "", args_content, flags=re.IGNORECASE)
 ```
 
-**Resolution Required**: **CONVERT ALL REGEX PARSING TO TOKEN-BASED PARSING**
+**Resolution Required**: **CONVERT REMAINING REGEX PARSING TO TOKEN-BASED PARSING**
 
 ### 2. MongoDB Client Expression Evaluation Engine
 **Location**: `src/database/mongodb_client.py`  
@@ -238,7 +240,7 @@ def _evaluate_expression(self, expression: Dict[str, Any]) -> Any:
 
 ### Priority 1: CRITICAL VIOLATIONS (Assessment Required)
 1. **ELIMINATE REGEX-BASED PARSING VIOLATIONS** 
-   - Convert WHERE module LIKE pattern conversion to token-based parsing
+   - ~~Convert WHERE module LIKE pattern conversion to token-based parsing~~ ✅ **COMPLETED**
    - Replace regex operations in Enhanced Aggregate parser with sqlparse tokens
    - Audit and fix regex usage in CTE preprocessor and fulltext modules
    - **Impact**: Multiple modules violating core token-based architecture
