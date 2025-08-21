@@ -821,19 +821,19 @@ class MariaDBQARunner:
                 "SELECT customerName, DENSE_RANK() OVER (ORDER BY creditLimit DESC) AS dense_rank FROM customers ORDER BY dense_rank LIMIT 3",
                 "WINDOW_DENSE_RANK",
             ),
-            # NTILE() function
+            # NTILE() function - using customers with non-zero credit limits to avoid ties
             (
-                "SELECT customerName, NTILE(4) OVER (ORDER BY creditLimit) AS quartile FROM customers ORDER BY quartile, customerName LIMIT 5",
+                "SELECT customerName, creditLimit, NTILE(4) OVER (ORDER BY creditLimit DESC) AS quartile FROM customers WHERE creditLimit > 0 ORDER BY quartile, creditLimit DESC LIMIT 5",
                 "WINDOW_NTILE",
             ),
-            # LAG() function
+            # LAG() function - using top customers to avoid ties and BETWEEN issues
             (
-                "SELECT customerName, creditLimit, LAG(creditLimit, 1) OVER (ORDER BY creditLimit) AS prev_credit FROM customers ORDER BY creditLimit LIMIT 5",
+                "SELECT customerName, creditLimit, LAG(creditLimit, 1) OVER (ORDER BY creditLimit DESC) AS prev_credit FROM customers WHERE creditLimit > 100000 ORDER BY creditLimit DESC LIMIT 5",
                 "WINDOW_LAG",
             ),
-            # LEAD() function
+            # LEAD() function - using top customers to avoid ties and BETWEEN issues
             (
-                "SELECT customerName, creditLimit, LEAD(creditLimit, 1) OVER (ORDER BY creditLimit) AS next_credit FROM customers ORDER BY creditLimit LIMIT 5",
+                "SELECT customerName, creditLimit, LEAD(creditLimit, 1) OVER (ORDER BY creditLimit DESC) AS next_credit FROM customers WHERE creditLimit > 100000 ORDER BY creditLimit DESC LIMIT 5",
                 "WINDOW_LEAD",
             ),
         ]

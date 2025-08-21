@@ -99,6 +99,9 @@ class WindowTranslator:
                     )
                     sort_spec[field_name] = direction
 
+                    # Note: Cannot add secondary sort fields for window functions
+                    # because $documentNumber requires exactly one element in sortBy
+
             # Build the window function expression
             if function_name == "ROW_NUMBER":
                 stage["$setWindowFields"]["output"][alias] = {"$documentNumber": {}}
@@ -107,19 +110,10 @@ class WindowTranslator:
             elif function_name == "DENSE_RANK":
                 stage["$setWindowFields"]["output"][alias] = {"$denseRank": {}}
             elif function_name == "NTILE":
-                # MongoDB doesn't have $ntile, use calculation based on row number
+                # NTILE will be handled specially in pipeline generation
+                # Just add a placeholder that will be processed later
                 n_buckets = int(arguments[0]) if arguments else 4
-
-                # Calculate bucket number using ROW_NUMBER and total count
-                # NTILE formula: CEILING(ROW_NUMBER * n_buckets / total_rows)
-                stage["$setWindowFields"]["output"][alias] = {
-                    "$ceil": {
-                        "$divide": [
-                            {"$multiply": [{"$documentNumber": {}}, n_buckets]},
-                            {"$count": {}},
-                        ]
-                    }
-                }
+                stage["$setWindowFields"]["output"][alias] = {"$documentNumber": {}}
             elif function_name == "LAG":
                 if arguments:
                     field_name = arguments[0]
@@ -153,12 +147,74 @@ class WindowTranslator:
 
         # Build pipeline with explicit sort first, then window fields
         pipeline = []
+        has_ntile = False
+        ntile_buckets = 4
+        ntile_field = ""
+
+        # Check for NTILE in window columns to handle specially
+        for col in window_columns:
+            function_name = col.get("function", "").upper()
+            if function_name == "NTILE":
+                has_ntile = True
+                arguments = col.get("arguments", [])
+                if not arguments and col.get("args_str"):
+                    args_str = col.get("args_str", "").strip()
+                    if args_str:
+                        arguments = [arg.strip() for arg in args_str.split(",")]
+                ntile_buckets = int(arguments[0]) if arguments else 4
+                ntile_field = col.get("alias", "quartile")
+                break
+
         if sort_spec:
             # Add explicit $sort stage before $setWindowFields
             pipeline.append({"$sort": sort_spec})
 
         if stage["$setWindowFields"]["output"]:
-            pipeline.append(stage)
+            if has_ntile:
+                # For NTILE, we need a different approach using facet to get total count
+                pipeline.extend(
+                    [
+                        {
+                            "$facet": {
+                                "data": [
+                                    {
+                                        "$setWindowFields": {
+                                            "output": {
+                                                ntile_field: {"$documentNumber": {}}
+                                            },
+                                            "sortBy": (
+                                                sort_spec if sort_spec else {"_id": 1}
+                                            ),
+                                        }
+                                    }
+                                ],
+                                "total": [{"$count": "count"}],
+                            }
+                        },
+                        {"$unwind": "$data"},
+                        {"$unwind": "$total"},
+                        {
+                            "$addFields": {
+                                f"data.{ntile_field}": {
+                                    "$ceil": {
+                                        "$divide": [
+                                            {
+                                                "$multiply": [
+                                                    f"$data.{ntile_field}",
+                                                    ntile_buckets,
+                                                ]
+                                            },
+                                            "$total.count",
+                                        ]
+                                    }
+                                }
+                            }
+                        },
+                        {"$replaceRoot": {"newRoot": "$data"}},
+                    ]
+                )
+            else:
+                pipeline.append(stage)
 
         return pipeline
 
